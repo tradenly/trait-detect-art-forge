@@ -9,9 +9,21 @@ import { Plus, X, Upload, Brain, Trash2 } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding } from '@/utils/embeddingUtils';
 
+interface TrainingExample {
+  embedding: number[];
+  fileName: string;
+  imageUrl: string;
+}
+
+interface TrainedTraits {
+  [category: string]: {
+    [value: string]: TrainingExample[];
+  };
+}
+
 interface TraitTrainerProps {
-  onTraitsUpdated: (traits: any) => void;
-  trainedTraits: any;
+  onTraitsUpdated: (traits: TrainedTraits) => void;
+  trainedTraits: TrainedTraits;
 }
 
 const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => {
@@ -162,8 +174,8 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
 
   const getTotalTrainingExamples = () => {
     let total = 0;
-    Object.values(trainedTraits).forEach((category: any) => {
-      Object.values(category).forEach((examples: any) => {
+    Object.values(trainedTraits).forEach((category) => {
+      Object.values(category).forEach((examples) => {
         total += examples.length;
       });
     });
@@ -286,7 +298,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
               <div className="space-y-3">
                 <Label className="text-white">Current Trait Values:</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Object.entries(trainedTraits[selectedCategory]).map(([value, examples]: [string, any]) => (
+                  {Object.entries(trainedTraits[selectedCategory]).map(([value, examples]) => (
                     <div key={value} className="bg-slate-800/50 rounded-lg p-3">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-medium text-white">{value}</span>
@@ -304,7 +316,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
                         </div>
                       </div>
                       <div className="grid grid-cols-4 gap-1">
-                        {examples.slice(0, 4).map((example: any, index: number) => (
+                        {examples.slice(0, 4).map((example, index) => (
                           <div key={index} className="relative group aspect-square">
                             <img
                               src={example.imageUrl}
@@ -338,9 +350,10 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
           <CardContent>
             <div className="space-y-2">
               {categories.map((category) => {
-                const valueCount = Object.keys(trainedTraits[category] || {}).length;
-                const exampleCount = Object.values(trainedTraits[category] || {}).reduce(
-                  (sum: number, examples: any) => sum + examples.length, 0
+                const categoryData = trainedTraits[category] || {};
+                const valueCount = Object.keys(categoryData).length;
+                const exampleCount = Object.values(categoryData).reduce(
+                  (sum, examples) => sum + examples.length, 0
                 );
                 
                 return (
