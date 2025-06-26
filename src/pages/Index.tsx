@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +5,7 @@ import ImageUploader from '@/components/ImageUploader';
 import TraitTrainer from '@/components/TraitTrainer';
 import TraitClassifier from '@/components/TraitClassifier';
 import MetadataGenerator from '@/components/MetadataGenerator';
-import { Brain, Upload, Sparkles, Download } from 'lucide-react';
+import { Brain, Upload, Sparkles, Download, Settings } from 'lucide-react';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
@@ -25,10 +24,21 @@ const Index = () => {
               AI Trait Forge
             </h1>
           </div>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-300 max-w-2xl mx-auto mb-6">
             Automatically detect and generate NFT metadata using advanced AI image analysis. 
             Train custom trait models and export marketplace-ready metadata files.
           </p>
+          
+          {/* Settings Link */}
+          <div className="flex justify-center">
+            <a 
+              href="/settings" 
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800/50 backdrop-blur border border-slate-600 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </a>
+          </div>
         </div>
 
         {/* Main Interface */}
