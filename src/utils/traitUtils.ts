@@ -1,7 +1,17 @@
 
 import { cosineSimilarity } from './embeddingUtils';
+import * as tf from '@tensorflow/tfjs';
 
-export function findClosestLabel(targetEmbedding: any, labelEmbeddings: any): { label: string; confidence: number } | null {
+interface TrainingExample {
+  embedding: tf.Tensor;
+  fileName: string;
+  imageUrl: string;
+}
+
+export function findClosestLabel(
+  targetEmbedding: tf.Tensor, 
+  labelEmbeddings: { [key: string]: TrainingExample[] }
+): { label: string; confidence: number } | null {
   if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
     return null;
   }
@@ -11,9 +21,7 @@ export function findClosestLabel(targetEmbedding: any, labelEmbeddings: any): { 
   
   // Compare against all training examples for each label
   for (const [label, examples] of Object.entries(labelEmbeddings)) {
-    const exampleArray = examples as any[];
-    
-    for (const example of exampleArray) {
+    for (const example of examples) {
       const similarity = cosineSimilarity(targetEmbedding, example.embedding);
       
       if (similarity > bestSimilarity) {

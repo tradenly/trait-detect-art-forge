@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -6,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { getImageEmbedding } from '@/utils/embeddingUtils';
+import { getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
 
 interface TraitClassifierProps {
@@ -40,7 +39,6 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     const metadataArray: any[] = [];
 
     try {
-      // Phase 1: Analyze each image
       toast({
         title: "Starting analysis",
         description: `Processing ${uploadedImages.length} images...`
@@ -49,7 +47,8 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
         const img = await loadImageFromFile(file);
-        const embedding = await getImageEmbedding(img);
+        const processedImg = await preprocessImage(img);
+        const embedding = await getImageEmbedding(processedImg);
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
@@ -62,6 +61,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             confidenceScores[traitCategory] = result.confidence;
           }
         }
+
+        // Clean up tensor
+        embedding.dispose();
 
         // Generate initial metadata
         const metadata = {
@@ -81,7 +83,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         };
 
         metadataArray.push(metadata);
-        setProgress(Math.round(((i + 1) / uploadedImages.length) * 50)); // First 50% for analysis
+        setProgress(Math.round(((i + 1) / uploadedImages.length) * 50));
         
         // Update results incrementally for preview
         if (i % 10 === 0 || i === uploadedImages.length - 1) {
@@ -103,7 +105,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           rarity: calculateTraitRarity(attr.trait_type, attr.value, metadataArray)
         }));
         
-        setProgress(50 + Math.round(((i + 1) / metadataArray.length) * 50)); // Second 50% for rarity calculation
+        setProgress(50 + Math.round(((i + 1) / metadataArray.length) * 50));
       }
 
       onMetadataGenerated(metadataArray);
@@ -115,6 +117,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         description: `Successfully analyzed ${uploadedImages.length} images with trait detection and rarity calculation`
       });
     } catch (error) {
+      console.error('Classification failed:', error);
       toast({
         title: "Classification failed",
         description: "Error during trait detection",

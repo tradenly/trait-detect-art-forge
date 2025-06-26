@@ -7,10 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Plus, X, Upload, Brain, Trash2 } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { loadModel, getImageEmbedding } from '@/utils/embeddingUtils';
+import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
+import * as tf from '@tensorflow/tfjs';
 
 interface TrainingExample {
-  embedding: number[];
+  embedding: tf.Tensor;
   fileName: string;
   imageUrl: string;
 }
@@ -33,17 +34,17 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
   const [training, setTraining] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
 
-  // Get list of current categories
   const categories = Object.keys(trainedTraits);
 
   useEffect(() => {
     loadModel().then(() => {
       setModelLoaded(true);
       toast({
-        title: "AI Model Loaded",
+        title: "AI Model Loaded ✅",
         description: "Ready to train trait detection"
       });
-    }).catch(() => {
+    }).catch((error) => {
+      console.error('Model loading failed:', error);
       toast({
         title: "Model Loading Failed",
         description: "Please refresh and try again",
@@ -60,7 +61,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       setSelectedCategory(newCategoryName);
       setNewCategoryName('');
       toast({
-        title: "Category Added",
+        title: "Category Added ✅",
         description: `${newCategoryName} trait category created`
       });
     }
@@ -68,6 +69,18 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
 
   const removeCategory = (categoryName: string) => {
     const updatedTraits = { ...trainedTraits };
+    
+    // Clean up tensors before deleting
+    if (updatedTraits[categoryName]) {
+      Object.values(updatedTraits[categoryName]).forEach(examples => {
+        examples.forEach(example => {
+          if (example.embedding && typeof example.embedding.dispose === 'function') {
+            example.embedding.dispose();
+          }
+        });
+      });
+    }
+    
     delete updatedTraits[categoryName];
     onTraitsUpdated(updatedTraits);
     
@@ -113,7 +126,8 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
 
       for (const file of files) {
         const img = await loadImageFromFile(file);
-        const embedding = await getImageEmbedding(img);
+        const processedImg = await preprocessImage(img);
+        const embedding = await getImageEmbedding(processedImg);
         
         updatedTraits[selectedCategory][newTraitValue].push({
           embedding: embedding,
@@ -126,7 +140,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       setNewTraitValue('');
       
       toast({
-        title: "Training Examples Added",
+        title: "Training Examples Added ✅",
         description: `${files.length} examples added for ${selectedCategory} → ${newTraitValue}`
       });
     } catch (error) {
@@ -152,6 +166,16 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
 
   const removeTraitValue = (category: string, value: string) => {
     const updatedTraits = { ...trainedTraits };
+    
+    // Clean up tensors
+    if (updatedTraits[category][value]) {
+      updatedTraits[category][value].forEach(example => {
+        if (example.embedding && typeof example.embedding.dispose === 'function') {
+          example.embedding.dispose();
+        }
+      });
+    }
+    
     delete updatedTraits[category][value];
     onTraitsUpdated(updatedTraits);
     
@@ -163,6 +187,13 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
 
   const removeTraitExample = (category: string, value: string, index: number) => {
     const updatedTraits = { ...trainedTraits };
+    
+    // Clean up tensor
+    const example = updatedTraits[category][value][index];
+    if (example.embedding && typeof example.embedding.dispose === 'function') {
+      example.embedding.dispose();
+    }
+    
     updatedTraits[category][value].splice(index, 1);
     
     if (updatedTraits[category][value].length === 0) {

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { TestTube, Upload, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { getImageEmbedding } from '@/utils/embeddingUtils';
+import { getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { findClosestLabel } from '@/utils/traitUtils';
 
 interface ModelTesterProps {
@@ -35,7 +35,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
     }
     
     setTestImages(imageFiles);
-    setTestResults([]); // Clear previous results
+    setTestResults([]);
   };
 
   const runModelTest = async () => {
@@ -56,7 +56,8 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
       for (let i = 0; i < testImages.length; i++) {
         const file = testImages[i];
         const img = await loadImageFromFile(file);
-        const embedding = await getImageEmbedding(img);
+        const processedImg = await preprocessImage(img);
+        const embedding = await getImageEmbedding(processedImg);
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
@@ -70,6 +71,9 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
           }
         }
 
+        // Clean up tensor
+        embedding.dispose();
+
         results.push({
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
@@ -82,7 +86,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
 
       setTestResults(results);
       
-      // Check if results look reasonable (at least some confidence > 0.5)
+      // Check if results look reasonable
       const hasGoodResults = results.some(result => 
         Object.values(result.confidenceScores).some((conf: any) => conf > 0.5)
       );
@@ -101,6 +105,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
         });
       }
     } catch (error) {
+      console.error('Test failed:', error);
       toast({
         title: "Test failed",
         description: "Error testing the model. Please try again.",
