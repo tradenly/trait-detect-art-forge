@@ -6,18 +6,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, Table, Settings } from 'lucide-react';
+import { Download, FileText, Table, Settings, Eye, CheckCircle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { saveAs } from 'file-saver';
 
 interface MetadataGeneratorProps {
   metadata: any[];
+  uploadedImages: File[];
 }
 
-const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
+const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps) => {
   const [collectionName, setCollectionName] = useState("AI Trait Collection");
   const [collectionDescription, setCollectionDescription] = useState("Generated with AI Trait Forge - Automatically detected traits using advanced AI image analysis");
   const [ipfsBaseUrl, setIpfsBaseUrl] = useState("ipfs://YOUR-HASH-HERE");
+  const [previewIndex, setPreviewIndex] = useState(0);
 
   const hasData = metadata.length > 0;
 
@@ -29,21 +31,13 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
       image: `${ipfsBaseUrl}/${item.fileName}`,
       collectionName,
       collectionDescription,
-      // Recalculate rarities for final export
+      // Ensure all attributes have proper rarity calculations
       attributes: item.attributes.map((attr: any) => ({
-        ...attr,
-        rarity: calculateFinalRarity(attr.trait_type, attr.value)
+        trait_type: attr.trait_type,
+        value: attr.value,
+        rarity: attr.rarity
       }))
     }));
-  };
-
-  const calculateFinalRarity = (traitType: string, value: string): string => {
-    const count = metadata.filter(item => 
-      item.attributes.some((attr: any) => attr.trait_type === traitType && attr.value === value)
-    ).length;
-    
-    const percentage = ((count / metadata.length) * 100).toFixed(1);
-    return `${percentage}%`;
   };
 
   const downloadJSON = () => {
@@ -54,21 +48,26 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
     saveAs(blob, `${collectionName.replace(/\s+/g, '_')}_metadata.json`);
     
     toast({
-      title: "JSON downloaded",
+      title: "JSON downloaded ✅",
       description: "Metadata exported successfully"
     });
   };
 
   const downloadCSV = () => {
     const finalMetadata = generateFinalMetadata();
+    
+    // Create CSV with one row per NFT, columns for each trait
+    const traitTypes = Array.from(new Set(finalMetadata.flatMap(item => 
+      item.attributes.map((attr: any) => attr.trait_type)
+    )));
+
     const csvHeader = [
       'Name',
       'Description', 
       'Image',
       'FileName',
-      ...Array.from(new Set(finalMetadata.flatMap(item => 
-        item.attributes.map((attr: any) => attr.trait_type)
-      )))
+      ...traitTypes,
+      ...traitTypes.map(trait => `${trait}_Rarity`)
     ].join(',');
 
     const csvRows = finalMetadata.map(item => {
@@ -79,17 +78,19 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
         `"${item.fileName}"`
       ];
 
-      // Add trait values in consistent order
-      const traitTypes = Array.from(new Set(finalMetadata.flatMap(item => 
-        item.attributes.map((attr: any) => attr.trait_type)
-      )));
-
+      // Add trait values
       const traitValues = traitTypes.map(traitType => {
         const attr = item.attributes.find((a: any) => a.trait_type === traitType);
         return attr ? `"${attr.value}"` : '""';
       });
 
-      return [...baseData, ...traitValues].join(',');
+      // Add rarity values
+      const rarityValues = traitTypes.map(traitType => {
+        const attr = item.attributes.find((a: any) => a.trait_type === traitType);
+        return attr ? `"${attr.rarity}"` : '""';
+      });
+
+      return [...baseData, ...traitValues, ...rarityValues].join(',');
     });
 
     const csvContent = [csvHeader, ...csvRows].join('\n');
@@ -97,7 +98,7 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
     saveAs(blob, `${collectionName.replace(/\s+/g, '_')}_metadata.csv`);
     
     toast({
-      title: "CSV downloaded",
+      title: "CSV downloaded ✅",
       description: "Spreadsheet exported successfully"
     });
   };
@@ -112,7 +113,7 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
     });
     
     toast({
-      title: "Individual JSONs downloaded",
+      title: "Individual JSONs downloaded ✅",
       description: `${finalMetadata.length} metadata files exported`
     });
   };
@@ -179,6 +180,97 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
         </CardContent>
       </Card>
 
+      {/* Metadata Preview with Images */}
+      <Card className="bg-slate-700/30 border-slate-600">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Eye className="w-5 h-5 text-purple-400" />
+            Metadata Preview
+          </CardTitle>
+          <CardDescription className="text-slate-400">
+            Review your generated metadata with image thumbnails
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Navigation */}
+          <div className="flex justify-between items-center">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))}
+              disabled={previewIndex === 0}
+            >
+              Previous
+            </Button>
+            <span className="text-white">
+              {previewIndex + 1} of {metadata.length} NFTs
+            </span>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setPreviewIndex(Math.min(metadata.length - 1, previewIndex + 1))}
+              disabled={previewIndex === metadata.length - 1}
+            >
+              Next
+            </Button>
+          </div>
+
+          {/* Current Item Preview */}
+          {metadata[previewIndex] && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
+                  <img
+                    src={metadata[previewIndex].imageUrl}
+                    alt={metadata[previewIndex].name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="text-center">
+                  <h4 className="font-medium text-white">{collectionName} #{String(previewIndex + 1).padStart(4, '0')}</h4>
+                  <p className="text-sm text-slate-400">{metadata[previewIndex].fileName}</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="bg-slate-800 rounded-lg p-4">
+                  <h5 className="text-white font-medium mb-2">Detected Traits</h5>
+                  <div className="space-y-2">
+                    {metadata[previewIndex].attributes.map((attr: any, index: number) => (
+                      <div key={index} className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
+                        <span className="text-slate-300 text-sm">{attr.trait_type}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">{attr.value}</Badge>
+                          <span className="text-xs text-slate-400">{attr.rarity}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-lg p-4">
+                  <h5 className="text-white font-medium mb-2">JSON Preview</h5>
+                  <div className="bg-slate-900 rounded p-3 max-h-48 overflow-y-auto">
+                    <pre className="text-xs text-slate-300 whitespace-pre-wrap">
+                      {JSON.stringify({
+                        name: `${collectionName} #${String(previewIndex + 1).padStart(4, '0')}`,
+                        description: collectionDescription,
+                        image: `${ipfsBaseUrl}/${metadata[previewIndex].fileName}`,
+                        attributes: metadata[previewIndex].attributes.map((attr: any) => ({
+                          trait_type: attr.trait_type,
+                          value: attr.value,
+                          rarity: attr.rarity
+                        }))
+                      }, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Export Options */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
@@ -194,7 +286,10 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
-              <div className="text-xl font-bold text-purple-400">{metadata.length}</div>
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <div className="text-xl font-bold text-green-400">{metadata.length}</div>
+              </div>
               <div className="text-xs text-slate-400">Total NFTs</div>
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
@@ -220,7 +315,7 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
             <Button onClick={downloadJSON} className="h-16 flex flex-col gap-1">
               <FileText className="w-5 h-5" />
               <span className="text-sm">Download JSON</span>
-              <span className="text-xs opacity-70">Single metadata file</span>
+              <span className="text-xs opacity-70">Marketplace ready</span>
             </Button>
             
             <Button onClick={downloadCSV} variant="outline" className="h-16 flex flex-col gap-1">
@@ -237,27 +332,13 @@ const MetadataGenerator = ({ metadata }: MetadataGeneratorProps) => {
           </div>
 
           {/* Format Information */}
-          <div className="text-xs text-slate-400 space-y-1">
-            <p><strong>JSON:</strong> Single file with all metadata - compatible with most marketplaces</p>
-            <p><strong>CSV:</strong> Spreadsheet format for easy viewing and editing</p>
-            <p><strong>Individual JSONs:</strong> Separate metadata file for each NFT (some platforms prefer this)</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Preview */}
-      <Card className="bg-slate-700/30 border-slate-600">
-        <CardHeader>
-          <CardTitle className="text-white">Metadata Preview</CardTitle>
-          <CardDescription className="text-slate-400">
-            Sample of your generated metadata
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-slate-800 rounded-lg p-4 max-h-96 overflow-y-auto">
-            <pre className="text-sm text-slate-300 whitespace-pre-wrap">
-              {JSON.stringify(generateFinalMetadata()[0], null, 2)}
-            </pre>
+          <div className="bg-slate-800/30 rounded-lg p-4">
+            <h5 className="text-white font-medium mb-2">Export Formats</h5>
+            <div className="text-xs text-slate-400 space-y-1">
+              <p><strong>JSON:</strong> Single file with all metadata - compatible with OpenSea, Tradeport, and most marketplaces</p>
+              <p><strong>CSV:</strong> Spreadsheet format with trait columns and rarity percentages for analysis</p>
+              <p><strong>Individual JSONs:</strong> Separate metadata file for each NFT (required by some platforms)</p>
+            </div>
           </div>
         </CardContent>
       </Card>

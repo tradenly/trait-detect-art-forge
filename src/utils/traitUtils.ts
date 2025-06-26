@@ -1,7 +1,7 @@
 
 import { cosineSimilarity } from './embeddingUtils';
 
-export function findClosestLabel(targetEmbedding: any, labelEmbeddings: any): string | null {
+export function findClosestLabel(targetEmbedding: any, labelEmbeddings: any): { label: string; confidence: number } | null {
   if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
     return null;
   }
@@ -24,7 +24,14 @@ export function findClosestLabel(targetEmbedding: any, labelEmbeddings: any): st
   }
   
   // Only return a match if similarity is above a threshold
-  return bestSimilarity > 0.3 ? bestMatch : null;
+  if (bestSimilarity > 0.3) {
+    return {
+      label: bestMatch!,
+      confidence: bestSimilarity
+    };
+  }
+  
+  return null;
 }
 
 export function calculateTraitRarity(traitType: string, value: string, allMetadata: any[]): string {

@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Play, Eye, BarChart3 } from 'lucide-react';
+import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding } from '@/utils/embeddingUtils';
-import { findClosestLabel } from '@/utils/traitUtils';
+import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
 
 interface TraitClassifierProps {
   uploadedImages: File[];
@@ -20,6 +20,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<any[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [currentPhase, setCurrentPhase] = useState<'idle' | 'analyzing' | 'calculating' | 'complete'>('idle');
 
   const canClassify = uploadedImages.length > 0 && Object.keys(trainedTraits).length > 0;
 
@@ -35,25 +36,34 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
     setClassifying(true);
     setProgress(0);
+    setCurrentPhase('analyzing');
     const metadataArray: any[] = [];
 
     try {
+      // Phase 1: Analyze each image
+      toast({
+        title: "Starting analysis",
+        description: `Processing ${uploadedImages.length} images...`
+      });
+
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
         const img = await loadImageFromFile(file);
         const embedding = await getImageEmbedding(img);
         
         const detectedTraits: any = {};
+        const confidenceScores: any = {};
         
         // Classify each trained trait category
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          const closestMatch = findClosestLabel(embedding, traitValues as any);
-          if (closestMatch) {
-            detectedTraits[traitCategory] = closestMatch;
+          const result = findClosestLabel(embedding, traitValues as any);
+          if (result) {
+            detectedTraits[traitCategory] = result.label;
+            confidenceScores[traitCategory] = result.confidence;
           }
         }
 
-        // Generate metadata
+        // Generate initial metadata
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
           description: "AI-generated NFT with automatically detected traits",
@@ -65,12 +75,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           attributes: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
             value,
-            rarity: calculateRarity(trait_type, value as string, metadataArray)
+            confidence: confidenceScores[trait_type],
+            rarity: "0%" // Will be calculated in phase 2
           }))
         };
 
         metadataArray.push(metadata);
-        setProgress(Math.round(((i + 1) / uploadedImages.length) * 100));
+        setProgress(Math.round(((i + 1) / uploadedImages.length) * 50)); // First 50% for analysis
         
         // Update results incrementally for preview
         if (i % 10 === 0 || i === uploadedImages.length - 1) {
@@ -78,12 +89,30 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         }
       }
 
+      // Phase 2: Calculate rarities
+      setCurrentPhase('calculating');
+      toast({
+        title: "Calculating rarities",
+        description: "Computing trait frequencies and rarity percentages..."
+      });
+
+      for (let i = 0; i < metadataArray.length; i++) {
+        const item = metadataArray[i];
+        item.attributes = item.attributes.map((attr: any) => ({
+          ...attr,
+          rarity: calculateTraitRarity(attr.trait_type, attr.value, metadataArray)
+        }));
+        
+        setProgress(50 + Math.round(((i + 1) / metadataArray.length) * 50)); // Second 50% for rarity calculation
+      }
+
       onMetadataGenerated(metadataArray);
       setResults(metadataArray);
+      setCurrentPhase('complete');
       
       toast({
-        title: "Classification complete!",
-        description: `Successfully analyzed ${uploadedImages.length} images`
+        title: "Analysis complete! 🎉",
+        description: `Successfully analyzed ${uploadedImages.length} images with trait detection and rarity calculation`
       });
     } catch (error) {
       toast({
@@ -91,6 +120,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         description: "Error during trait detection",
         variant: "destructive"
       });
+      setCurrentPhase('idle');
     } finally {
       setClassifying(false);
     }
@@ -105,17 +135,6 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     });
   };
 
-  const calculateRarity = (traitType: string, value: string, currentResults: any[]): string => {
-    if (currentResults.length === 0) return "0%";
-    
-    const count = currentResults.filter(item => 
-      item.attributes.some((attr: any) => attr.trait_type === traitType && attr.value === value)
-    ).length;
-    
-    const percentage = ((count / currentResults.length) * 100).toFixed(1);
-    return `${percentage}%`;
-  };
-
   const getTraitStats = () => {
     if (results.length === 0) return {};
     
@@ -126,13 +145,35 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           stats[attr.trait_type] = {};
         }
         if (!stats[attr.trait_type][attr.value]) {
-          stats[attr.trait_type][attr.value] = 0;
+          stats[attr.trait_type][attr.value] = { count: 0, avgConfidence: 0, confidences: [] };
         }
-        stats[attr.trait_type][attr.value]++;
+        stats[attr.trait_type][attr.value].count++;
+        stats[attr.trait_type][attr.value].confidences.push(attr.confidence || 0);
+      });
+    });
+    
+    // Calculate average confidences
+    Object.values(stats).forEach((category: any) => {
+      Object.values(category).forEach((value: any) => {
+        const confidences = value.confidences;
+        value.avgConfidence = confidences.reduce((sum: number, conf: number) => sum + conf, 0) / confidences.length;
       });
     });
     
     return stats;
+  };
+
+  const getPhaseDescription = () => {
+    switch (currentPhase) {
+      case 'analyzing':
+        return 'Running AI analysis on each image...';
+      case 'calculating':
+        return 'Computing trait frequencies and rarity percentages...';
+      case 'complete':
+        return 'Analysis complete!';
+      default:
+        return 'Ready to start analysis';
+    }
   };
 
   return (
@@ -165,12 +206,22 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           </div>
 
           {classifying && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Analyzing images...</span>
+                <span className="text-slate-400">{getPhaseDescription()}</span>
                 <span className="text-slate-400">{progress}%</span>
               </div>
               <Progress value={progress} className="w-full" />
+              {currentPhase === 'analyzing' && (
+                <p className="text-xs text-slate-500">
+                  Phase 1/2: AI analyzing each image for trait detection
+                </p>
+              )}
+              {currentPhase === 'calculating' && (
+                <p className="text-xs text-slate-500">
+                  Phase 2/2: Computing rarity percentages across collection
+                </p>
+              )}
             </div>
           )}
 
@@ -181,7 +232,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Analyzing...' : 'Start AI Analysis'}
+            {classifying ? 'Analyzing Collection...' : 'Start AI Analysis'}
           </Button>
         </CardContent>
       </Card>
@@ -195,7 +246,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               Detection Results
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Preview of detected traits
+              Preview of AI-detected traits with confidence scores
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -236,13 +287,30 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                   <h4 className="text-lg font-medium text-white">
                     {results[previewIndex].name}
                   </h4>
+                  <div className="text-sm text-slate-400">
+                    File: {results[previewIndex].fileName}
+                  </div>
                   <div className="space-y-2">
                     {results[previewIndex].attributes.map((attr: any, index: number) => (
-                      <div key={index} className="flex justify-between items-center p-2 bg-slate-800/50 rounded">
-                        <span className="text-slate-300 text-sm">{attr.trait_type}</span>
+                      <div key={index} className="flex justify-between items-center p-3 bg-slate-800/50 rounded">
+                        <span className="text-slate-300 text-sm font-medium">{attr.trait_type}</span>
                         <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{attr.value}</Badge>
-                          <span className="text-xs text-slate-400">{attr.rarity}</span>
+                          <Badge 
+                            variant="secondary" 
+                            className={attr.confidence >= 0.7 ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}
+                          >
+                            {attr.value}
+                          </Badge>
+                          <div className="text-xs text-slate-400 text-right">
+                            <div>{attr.rarity}</div>
+                            <div className="flex items-center gap-1">
+                              {attr.confidence >= 0.7 ? 
+                                <CheckCircle className="w-3 h-3 text-green-400" /> : 
+                                <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                              }
+                              {Math.round((attr.confidence || 0) * 100)}%
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -260,10 +328,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-purple-400" />
-              Trait Distribution
+              Collection Statistics
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Rarity statistics for your collection
+              Trait distribution and confidence analysis
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -271,12 +339,21 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               {Object.entries(getTraitStats()).map(([category, values]: [string, any]) => (
                 <div key={category} className="space-y-2">
                   <h4 className="font-medium text-white">{category}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {Object.entries(values).map(([value, count]: [string, any]) => (
-                      <div key={value} className="bg-slate-800/50 rounded p-2 text-center">
-                        <div className="text-sm font-medium text-white">{value}</div>
-                        <div className="text-xs text-slate-400">
-                          {count} ({((count / results.length) * 100).toFixed(1)}%)
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {Object.entries(values).map(([value, stats]: [string, any]) => (
+                      <div key={value} className="bg-slate-800/50 rounded p-3">
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="text-sm font-medium text-white">{value}</div>
+                          <div className="flex items-center gap-1">
+                            {stats.avgConfidence >= 0.7 ? 
+                              <CheckCircle className="w-3 h-3 text-green-400" /> : 
+                              <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                            }
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-400 space-y-1">
+                          <div>Count: {stats.count} ({((stats.count / results.length) * 100).toFixed(1)}%)</div>
+                          <div>Avg Confidence: {Math.round(stats.avgConfidence * 100)}%</div>
                         </div>
                       </div>
                     ))}

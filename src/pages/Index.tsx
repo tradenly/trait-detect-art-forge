@@ -1,17 +1,44 @@
+
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import ImageUploader from '@/components/ImageUploader';
+import { Button } from "@/components/ui/button";
+import OnboardingScreen from '@/components/OnboardingScreen';
 import TraitTrainer from '@/components/TraitTrainer';
+import ModelTester from '@/components/ModelTester';
+import ImageUploader from '@/components/ImageUploader';
 import TraitClassifier from '@/components/TraitClassifier';
 import MetadataGenerator from '@/components/MetadataGenerator';
-import { Brain, Upload, Sparkles, Download, Settings } from 'lucide-react';
+import { Brain, Upload, TestTube, Sparkles, Download, ArrowRight } from 'lucide-react';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('upload');
-  const [uploadedImages, setUploadedImages] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
   const [trainedTraits, setTrainedTraits] = useState({});
+  const [modelTested, setModelTested] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState([]);
   const [detectedMetadata, setDetectedMetadata] = useState([]);
+
+  const steps = [
+    { id: 'onboarding', title: 'Get Started', icon: Brain },
+    { id: 'train', title: 'Train AI Model', icon: Brain },
+    { id: 'test', title: 'Test Model', icon: TestTube },
+    { id: 'upload', title: 'Upload Collection', icon: Upload },
+    { id: 'classify', title: 'Detect Traits', icon: Sparkles },
+    { id: 'export', title: 'Export Metadata', icon: Download }
+  ];
+
+  const canProceedToTest = Object.keys(trainedTraits).length > 0 && 
+    Object.values(trainedTraits).some((category: any) => Object.keys(category).length > 0);
+
+  const canProceedToUpload = modelTested;
+  const canProceedToClassify = uploadedImages.length > 0 && canProceedToUpload;
+  const canProceedToExport = detectedMetadata.length > 0;
+
+  const nextStep = () => {
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -24,125 +51,198 @@ const Index = () => {
               AI Trait Forge
             </h1>
           </div>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto mb-6">
-            Automatically detect and generate NFT metadata using advanced AI image analysis. 
-            Train custom trait models and export marketplace-ready metadata files.
+          <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+            Train AI models to automatically detect NFT traits and generate marketplace-ready metadata
           </p>
-          
-          {/* Settings Link */}
-          <div className="flex justify-center">
-            <a 
-              href="/settings" 
-              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800/50 backdrop-blur border border-slate-600 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </a>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="max-w-4xl mx-auto mb-8">
+          <div className="flex items-center justify-between mb-4">
+            {steps.map((step, index) => {
+              const StepIcon = step.icon;
+              const isActive = index === currentStep;
+              const isCompleted = index < currentStep;
+              const isAccessible = index <= currentStep;
+
+              return (
+                <div key={step.id} className="flex items-center">
+                  <button 
+                    onClick={() => isAccessible && setCurrentStep(index)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      isActive 
+                        ? 'bg-purple-600 text-white' 
+                        : isCompleted 
+                          ? 'bg-green-600 text-white hover:bg-green-700' 
+                          : isAccessible
+                            ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                    }`}
+                    disabled={!isAccessible}
+                  >
+                    <StepIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{step.title}</span>
+                  </button>
+                  {index < steps.length - 1 && (
+                    <ArrowRight className="w-4 h-4 text-slate-600 mx-2" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Main Interface */}
+        {/* Step Content */}
         <div className="max-w-6xl mx-auto">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-8 bg-slate-800/50 backdrop-blur">
-              <TabsTrigger value="upload" className="flex items-center gap-2">
-                <Upload className="w-4 h-4" />
-                Upload Images
-              </TabsTrigger>
-              <TabsTrigger value="train" className="flex items-center gap-2">
-                <Brain className="w-4 h-4" />
-                Train Traits
-              </TabsTrigger>
-              <TabsTrigger value="classify" className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Detect Traits
-              </TabsTrigger>
-              <TabsTrigger value="export" className="flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                Export Data
-              </TabsTrigger>
-            </TabsList>
+          {currentStep === 0 && (
+            <OnboardingScreen onGetStarted={nextStep} />
+          )}
 
-            <TabsContent value="upload" className="space-y-6">
-              <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-purple-400" />
-                    Upload NFT Collection
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Upload your NFT images (up to 5,000 supported). These will be analyzed for traits.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ImageUploader 
-                    onImagesUploaded={setUploadedImages}
-                    uploadedImages={uploadedImages}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+          {currentStep === 1 && (
+            <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Brain className="w-5 h-5 text-purple-400" />
+                  Train AI Models
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Define trait categories and upload sample images to train the AI
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TraitTrainer 
+                  onTraitsUpdated={setTrainedTraits}
+                  trainedTraits={trainedTraits}
+                />
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <Button 
+                    onClick={nextStep}
+                    disabled={!canProceedToTest}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {canProceedToTest ? 'Continue to Testing' : 'Upload Training Examples First'}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-            <TabsContent value="train" className="space-y-6">
-              <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Brain className="w-5 h-5 text-purple-400" />
-                    Train Trait Detection
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Upload 5+ example images for each trait value to train the AI model.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TraitTrainer 
-                    onTraitsUpdated={setTrainedTraits}
-                    trainedTraits={trainedTraits}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+          {currentStep === 2 && (
+            <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <TestTube className="w-5 h-5 text-purple-400" />
+                  Test Your Model
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Upload test images to verify your AI model is working correctly
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ModelTester 
+                  trainedTraits={trainedTraits}
+                  onTestCompleted={() => setModelTested(true)}
+                  modelTested={modelTested}
+                />
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <Button 
+                    onClick={nextStep}
+                    disabled={!canProceedToUpload}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Test Your Model First'}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-            <TabsContent value="classify" className="space-y-6">
-              <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-purple-400" />
-                    AI Trait Detection
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Analyze your uploaded images using the trained trait models.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TraitClassifier 
-                    uploadedImages={uploadedImages}
-                    trainedTraits={trainedTraits}
-                    onMetadataGenerated={setDetectedMetadata}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+          {currentStep === 3 && (
+            <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-purple-400" />
+                  Upload Your Collection
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Upload your complete NFT collection for trait detection
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ImageUploader 
+                  onImagesUploaded={setUploadedImages}
+                  uploadedImages={uploadedImages}
+                />
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <Button 
+                    onClick={nextStep}
+                    disabled={!canProceedToClassify}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {canProceedToClassify ? 'Continue to Trait Detection' : 'Upload Your Collection First'}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-            <TabsContent value="export" className="space-y-6">
-              <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Download className="w-5 h-5 text-purple-400" />
-                    Export Metadata
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    Download your generated metadata in JSON and CSV formats for marketplace upload.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <MetadataGenerator 
-                    metadata={detectedMetadata}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+          {currentStep === 4 && (
+            <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-400" />
+                  AI Trait Detection
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Analyze your collection using the trained AI models
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TraitClassifier 
+                  uploadedImages={uploadedImages}
+                  trainedTraits={trainedTraits}
+                  onMetadataGenerated={setDetectedMetadata}
+                />
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <Button 
+                    onClick={nextStep}
+                    disabled={!canProceedToExport}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {canProceedToExport ? 'Continue to Export' : 'Run Trait Detection First'}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {currentStep === 5 && (
+            <Card className="bg-slate-800/50 backdrop-blur border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Download className="w-5 h-5 text-purple-400" />
+                  Export Metadata
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Download your generated metadata in JSON and CSV formats
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MetadataGenerator 
+                  metadata={detectedMetadata}
+                  uploadedImages={uploadedImages}
+                />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
