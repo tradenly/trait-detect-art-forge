@@ -26,15 +26,16 @@ interface TestResult {
 
 interface ModelTesterProps {
   trainedTraits: any;
+  onTestCompleted: () => void;
 }
 
-const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
+const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
   const [testImages, setTestImages] = useState<File[]>([]);
   const [testing, setTesting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [testingCompleted, setTestingCompleted] = useState(false);
   const [feedbackData, setFeedbackData] = useState<{ [key: string]: { correct: boolean; correctValue?: string } }>({});
 
   const handleTestImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,7 +43,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     setTestImages(files);
     setTestResults([]);
     setCurrentTestIndex(0);
-    setShowFeedback(false);
+    setTestingCompleted(false);
   };
 
   const runTests = async () => {
@@ -81,12 +82,12 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         
         const imageResults: { [category: string]: TraitResult } = {};
         
-        // Test against all trained trait categories using the SAME logic as TraitClassifier
+        // Test against all trained trait categories with STRICTER confidence threshold
         for (const [category, categoryTraits] of Object.entries(trainedTraits)) {
           console.log(`Testing category: ${category}`);
           const result = findClosestLabel(embedding, categoryTraits as any);
           
-          if (result) {
+          if (result && result.confidence >= 0.8) { // Stricter threshold for testing
             imageResults[category] = {
               label: result.label,
               confidence: result.confidence,
@@ -96,10 +97,10 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           } else {
             imageResults[category] = {
               label: 'Not Detected',
-              confidence: 0,
-              avgSimilarity: 0
+              confidence: result?.confidence || 0,
+              avgSimilarity: result?.avgSimilarity || 0
             };
-            console.log(`${category}: No detection`);
+            console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0})`);
           }
         }
         
@@ -117,6 +118,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
       
       setTestResults(results);
       setCurrentTestIndex(0);
+      setTestingCompleted(true);
       
       toast({
         title: "Testing complete! 🧪",
@@ -165,18 +167,25 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
       });
     }
     
-    setShowFeedback(false);
     setFeedbackData({});
   };
 
+  const completeTestingPhase = () => {
+    onTestCompleted();
+    toast({
+      title: "Testing phase completed! ✅",
+      description: "You can now proceed to upload your NFT collection"
+    });
+  };
+
   const getConfidenceColor = (confidence: number, isDetected: boolean) => {
-    if (!isDetected || confidence < 0.7) return 'text-yellow-400';
-    if (confidence >= 0.85) return 'text-green-400';
+    if (!isDetected || confidence < 0.8) return 'text-yellow-400';
+    if (confidence >= 0.9) return 'text-green-400';
     return 'text-blue-400';
   };
 
   const getConfidenceBadgeVariant = (confidence: number, isDetected: boolean) => {
-    if (!isDetected || confidence < 0.7) return 'secondary';
+    if (!isDetected || confidence < 0.8) return 'secondary';
     return 'default';
   };
 
@@ -184,28 +193,28 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Important Detection Guide */}
+      <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-yellow-200">
+            <strong>Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 80%). Green percentages show <strong>DETECTED</strong> traits with high confidence. This ensures more accurate results.
+          </div>
+        </div>
+      </div>
+
       {/* Test Controls */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <TestTube className="w-5 h-5 text-blue-400" />
-            AI Model Testing (Improved Detection)
+            AI Model Testing
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Test your trained AI model with sample images and provide feedback to improve accuracy
+            Test your trained AI model with sample images to verify accuracy before processing your collection
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Important Notice */}
-          <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-yellow-200">
-                <strong>Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 70%). Green percentages show <strong>DETECTED</strong> traits with high confidence.
-              </div>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{testImages.length}</div>
@@ -249,14 +258,14 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div>
             <Button 
               onClick={runTests}
               disabled={testImages.length === 0 || Object.keys(trainedTraits).length === 0 || testing}
-              className="flex-1"
+              className="w-full"
             >
               <TestTube className="w-4 h-4 mr-2" />
-              {testing ? 'Testing...' : 'Test AI Again'}
+              {testing ? 'Testing...' : 'Run AI Test'}
             </Button>
           </div>
         </CardContent>
@@ -268,10 +277,10 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-green-400" />
-              Test Results - Enhanced Detection
+              Test Results Review
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review AI predictions and mark corrections. Yellow = Not Detected, Green = Detected
+              Review AI predictions. Yellow = Not Detected (confidence too low), Green = Detected with high confidence
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -318,8 +327,8 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                   
                   <div className="space-y-3">
                     {Object.entries(currentResult.results).map(([category, result]) => {
-                      const isDetected = result.confidence >= 0.7;
-                      const displayText = isDetected ? result.label : 'Not Detected';
+                      const isDetected = result.confidence >= 0.8 && result.label !== 'Not Detected';
+                      const displayText = isDetected ? result.label : 'This trait was not detected';
                       
                       return (
                         <div key={category} className="bg-slate-800/50 rounded-lg p-4">
@@ -346,13 +355,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                                 {Math.round(result.confidence * 100)}%
                               </span>
                             </div>
-                            
-                            {!isDetected && (
-                              <div className="text-xs text-yellow-400 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                This trait was not detected (confidence too low)
-                              </div>
-                            )}
                             
                             <div className="flex items-center gap-2 pt-2">
                               <span className="text-xs text-slate-400">Is this correct?</span>
@@ -387,6 +389,20 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                     </Button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Complete Testing Button */}
+            {testingCompleted && (
+              <div className="mt-6 pt-6 border-t border-slate-700">
+                <Button 
+                  onClick={completeTestingPhase}
+                  className="w-full"
+                  size="lg"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Complete Testing & Continue to Collection Upload
+                </Button>
               </div>
             )}
           </CardContent>

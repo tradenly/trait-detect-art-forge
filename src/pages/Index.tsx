@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +13,7 @@ import { Brain, Upload, TestTube, Sparkles, Download, ArrowRight } from 'lucide-
 const Index = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [trainedTraits, setTrainedTraits] = useState({});
+  const [modelTested, setModelTested] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
   const [detectedMetadata, setDetectedMetadata] = useState([]);
 
@@ -29,7 +29,7 @@ const Index = () => {
   const canProceedToTest = Object.keys(trainedTraits).length > 0 && 
     Object.values(trainedTraits).some((category: any) => Object.keys(category).length > 0);
 
-  const canProceedToUpload = canProceedToTest; // Can proceed to upload if we have trained traits
+  const canProceedToUpload = modelTested; // Need to complete testing first
   const canProceedToClassify = uploadedImages.length > 0 && canProceedToUpload;
   const canProceedToExport = detectedMetadata.length > 0;
 
@@ -142,6 +142,7 @@ const Index = () => {
               <CardContent>
                 <ModelTester 
                   trainedTraits={trainedTraits}
+                  onTestCompleted={() => setModelTested(true)}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <Button 
@@ -150,7 +151,7 @@ const Index = () => {
                     className="w-full"
                     size="lg"
                   >
-                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Test Your Model First'}
+                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Complete Testing First'}
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
