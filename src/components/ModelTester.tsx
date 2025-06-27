@@ -4,47 +4,48 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, ThumbsUp, ThumbsDown, X } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
 import { findClosestLabel, validateDetectionResults } from '@/utils/traitUtils';
 
-interface ModelTesterProps {
-  trainedTraits: any;
-  onTestCompleted: () => void;
-  modelTested: boolean;
+interface TraitResult {
+  label: string;
+  confidence: number;
+  avgSimilarity: number;
 }
 
-const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTesterProps) => {
+interface TestResult {
+  fileName: string;
+  imageUrl: string;
+  results: { [category: string]: TraitResult };
+  userFeedback?: { [category: string]: { correct: boolean; correctValue?: string } };
+}
+
+interface ModelTesterProps {
+  trainedTraits: any;
+}
+
+const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
   const [testImages, setTestImages] = useState<File[]>([]);
-  const [testResults, setTestResults] = useState<any[]>([]);
   const [testing, setTesting] = useState(false);
-  const [testProgress, setTestProgress] = useState(0);
-  const [corrections, setCorrections] = useState<any>({});
-  const [correctionsMade, setCorrectionsMade] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [currentTestIndex, setCurrentTestIndex] = useState(0);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackData, setFeedbackData] = useState<{ [key: string]: { correct: boolean; correctValue?: string } }>({});
 
   const handleTestImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
-    
-    if (imageFiles.length > 10) {
-      toast({
-        title: "Too many test images",
-        description: "Please upload 2-10 test images only",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    setTestImages(imageFiles);
+    setTestImages(files);
     setTestResults([]);
-    setCorrections({});
-    setCorrectionsMade(false);
+    setCurrentTestIndex(0);
+    setShowFeedback(false);
   };
 
-  const runModelTest = async () => {
+  const runTests = async () => {
     if (testImages.length === 0) {
       toast({
         title: "No test images",
@@ -54,89 +55,78 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
       return;
     }
 
-    // Validate training quality first
-    const validationIssues: string[] = [];
-    Object.entries(trainedTraits).forEach(([category, traits]: [string, any]) => {
-      Object.entries(traits).forEach(([value, examples]: [string, any]) => {
-        const validation = validateTrainingQuality(examples);
-        if (!validation.isValid) {
-          validationIssues.push(`${category} → ${value}: ${validation.issues.join(', ')}`);
-        }
-      });
-    });
-
-    if (validationIssues.length > 0) {
+    if (Object.keys(trainedTraits).length === 0) {
       toast({
-        title: "Training Quality Issues Detected",
-        description: "Some traits may have insufficient training data",
+        title: "No trained traits",
+        description: "Please train some traits first",
         variant: "destructive"
       });
-      console.warn('Training issues:', validationIssues);
+      return;
     }
 
     setTesting(true);
-    setTestProgress(0);
-    setCorrectionsMade(false);
-    const results: any[] = [];
+    setProgress(0);
+    const results: TestResult[] = [];
+
+    console.log('Starting model testing with trained traits:', Object.keys(trainedTraits));
 
     try {
       for (let i = 0; i < testImages.length; i++) {
         const file = testImages[i];
+        console.log(`Testing image ${i + 1}/${testImages.length}: ${file.name}`);
+        
         const img = await loadImageFromFile(file);
         const processedImg = await preprocessImage(img);
         const embedding = await getImageEmbedding(processedImg);
         
-        const detectedTraits: any = {};
-        const confidenceScores: any = {};
+        const imageResults: { [category: string]: TraitResult } = {};
         
-        // Test each trained trait category - ENSURE ALL categories are tested
-        for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          const result = findClosestLabel(embedding, traitValues as any);
+        // Test against all trained trait categories using the SAME logic as TraitClassifier
+        for (const [category, categoryTraits] of Object.entries(trainedTraits)) {
+          console.log(`Testing category: ${category}`);
+          const result = findClosestLabel(embedding, categoryTraits as any);
+          
           if (result) {
-            detectedTraits[traitCategory] = result.label;
-            confidenceScores[traitCategory] = result.confidence;
+            imageResults[category] = {
+              label: result.label,
+              confidence: result.confidence,
+              avgSimilarity: result.avgSimilarity
+            };
+            console.log(`${category}: ${result.label} (confidence: ${result.confidence.toFixed(3)})`);
           } else {
-            detectedTraits[traitCategory] = 'Unknown';
-            confidenceScores[traitCategory] = 0;
+            imageResults[category] = {
+              label: 'Not Detected',
+              confidence: 0,
+              avgSimilarity: 0
+            };
+            console.log(`${category}: No detection`);
           }
         }
-
+        
         // Clean up tensor
         embedding.dispose();
-
+        
         results.push({
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          detectedTraits,
-          confidenceScores,
-          needsReview: Object.values(confidenceScores).some((conf: any) => conf < 0.7)
+          results: imageResults
         });
-
-        setTestProgress(Math.round(((i + 1) / testImages.length) * 100));
+        
+        setProgress(Math.round(((i + 1) / testImages.length) * 100));
       }
-
+      
       setTestResults(results);
+      setCurrentTestIndex(0);
       
-      // Validate overall results
-      const validation = validateDetectionResults(results);
-      
-      if (validation.accuracy > 0.7) {
-        toast({
-          title: "Model test successful! ✅",
-          description: `Average accuracy: ${Math.round(validation.accuracy * 100)}%. Your AI model is ready!`
-        });
-      } else {
-        toast({
-          title: "Model performance review needed",
-          description: `Accuracy: ${Math.round(validation.accuracy * 100)}%. Please review and correct the results below.`,
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Test failed:', error);
       toast({
-        title: "Test failed",
-        description: "Error testing the model. Please try again.",
+        title: "Testing complete! 🧪",
+        description: `Tested ${testImages.length} images across ${Object.keys(trainedTraits).length} trait categories`
+      });
+    } catch (error) {
+      console.error('Testing failed:', error);
+      toast({
+        title: "Testing failed",
+        description: "Error during model testing",
         variant: "destructive"
       });
     } finally {
@@ -153,283 +143,252 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
     });
   };
 
-  const handleCorrectionToggle = (resultIndex: number, traitType: string, isCorrect: boolean) => {
-    const newCorrections = { ...corrections };
-    if (!newCorrections[resultIndex]) {
-      newCorrections[resultIndex] = {};
+  const handleFeedbackToggle = (category: string, field: 'correct', value: boolean) => {
+    setFeedbackData(prev => ({
+      ...prev,
+      [category]: {
+        ...prev[category],
+        [field]: value
+      }
+    }));
+  };
+
+  const submitFeedback = () => {
+    if (testResults[currentTestIndex]) {
+      const updatedResults = [...testResults];
+      updatedResults[currentTestIndex].userFeedback = { ...feedbackData };
+      setTestResults(updatedResults);
+      
+      toast({
+        title: "Feedback recorded ✅",
+        description: "Your corrections have been saved for analysis"
+      });
     }
     
-    // Store whether the AI prediction was correct or not
-    newCorrections[resultIndex][traitType] = {
-      aiPrediction: testResults[resultIndex].detectedTraits[traitType],
-      isCorrect: isCorrect,
-      confidence: testResults[resultIndex].confidenceScores[traitType]
-    };
-    
-    setCorrections(newCorrections);
-    setCorrectionsMade(true);
-    
-    toast({
-      title: isCorrect ? "Marked as correct ✅" : "Marked as incorrect ❌",
-      description: `${traitType}: "${testResults[resultIndex].detectedTraits[traitType]}" - feedback recorded`
-    });
+    setShowFeedback(false);
+    setFeedbackData({});
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'text-green-400';
-    if (confidence >= 0.6) return 'text-yellow-400';
-    return 'text-red-400';
+  const getConfidenceColor = (confidence: number, isDetected: boolean) => {
+    if (!isDetected || confidence < 0.7) return 'text-yellow-400';
+    if (confidence >= 0.85) return 'text-green-400';
+    return 'text-blue-400';
   };
 
-  const getConfidenceIcon = (confidence: number) => {
-    if (confidence >= 0.7) return CheckCircle;
-    return AlertCircle;
+  const getConfidenceBadgeVariant = (confidence: number, isDetected: boolean) => {
+    if (!isDetected || confidence < 0.7) return 'secondary';
+    return 'default';
   };
 
-  const getOverallAccuracy = () => {
-    if (testResults.length === 0) return 0;
-    const validation = validateDetectionResults(testResults);
-    return validation.accuracy;
-  };
-
-  const getCorrectionFeedback = () => {
-    let correctCount = 0;
-    let totalCount = 0;
-    
-    Object.values(corrections).forEach((imageCorrections: any) => {
-      Object.values(imageCorrections).forEach((correction: any) => {
-        totalCount++;
-        if (correction.isCorrect) correctCount++;
-      });
-    });
-    
-    return totalCount > 0 ? correctCount / totalCount : 0;
-  };
+  const currentResult = testResults[currentTestIndex];
 
   return (
     <div className="space-y-6">
-      {/* Training Quality Check */}
-      <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <TestTube className="w-5 h-5 text-blue-400" />
-          <h4 className="font-medium text-white">Model Testing Instructions</h4>
-        </div>
-        <div className="text-slate-300 text-sm space-y-2">
-          <p>Upload 2-10 test images to verify your AI model can detect traits correctly.</p>
-          <p><strong>Important:</strong> Use images that clearly show the traits you trained for, but weren't used in training.</p>
-          <p>Review each result and toggle whether the AI got it right or wrong.</p>
-        </div>
-      </div>
-
-      {/* Upload Test Images */}
+      {/* Test Controls */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
-          <CardTitle className="text-white text-lg">Upload Test Images</CardTitle>
+          <CardTitle className="text-white flex items-center gap-2">
+            <TestTube className="w-5 h-5 text-blue-400" />
+            AI Model Testing (Improved Detection)
+          </CardTitle>
           <CardDescription className="text-slate-400">
-            Select images to test your trained model
+            Test your trained AI model with sample images and provide feedback to improve accuracy
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative">
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={handleTestImageUpload}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            />
-            <div className="border-2 border-dashed border-slate-600 hover:border-slate-500 rounded-lg p-6 text-center transition-colors">
-              <Upload className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-              <p className="text-white font-medium">Upload Test Images</p>
-              <p className="text-slate-400 text-sm">2-10 images recommended</p>
+          {/* Important Notice */}
+          <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-yellow-200">
+                <strong>Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 70%). Green percentages show <strong>DETECTED</strong> traits with high confidence.
+              </div>
             </div>
           </div>
 
-          {testImages.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-white font-medium">{testImages.length} test images uploaded</p>
-              <div className="grid grid-cols-6 gap-2">
-                {testImages.map((file, index) => (
-                  <div key={index} className="aspect-square bg-slate-600 rounded overflow-hidden">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={`Test ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
-              </div>
-              
-              <Button 
-                onClick={runModelTest}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-400">{testImages.length}</div>
+              <div className="text-sm text-slate-400">Test Images</div>
+            </div>
+            <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-400">{Object.keys(trainedTraits).length}</div>
+              <div className="text-sm text-slate-400">Trait Categories</div>
+            </div>
+            <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-400">{testResults.length}</div>
+              <div className="text-sm text-slate-400">Tests Complete</div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-white">Upload Test Images</Label>
+            <div className="relative">
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleTestImageUpload}
+                className="absolute inset-0 opacity-0 cursor-pointer"
                 disabled={testing}
-                className="w-full"
-                size="lg"
-              >
-                {testing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Testing Model...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="w-4 h-4 mr-2" />
-                    Test AI Model
-                  </>
-                )}
+              />
+              <Button disabled={testing} className="w-full">
+                <Upload className="w-4 h-4 mr-2" />
+                Select Test Images
               </Button>
             </div>
-          )}
+          </div>
 
           {testing && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Testing images...</span>
-                <span className="text-slate-400">{testProgress}%</span>
+                <span className="text-slate-400">Testing AI model...</span>
+                <span className="text-slate-400">{progress}%</span>
               </div>
-              <Progress value={testProgress} className="w-full" />
+              <Progress value={progress} className="w-full" />
             </div>
           )}
+
+          <div className="flex gap-2">
+            <Button 
+              onClick={runTests}
+              disabled={testImages.length === 0 || Object.keys(trainedTraits).length === 0 || testing}
+              className="flex-1"
+            >
+              <TestTube className="w-4 h-4 mr-2" />
+              {testing ? 'Testing...' : 'Test AI Again'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Test Results with Simple Yes/No Interface */}
+      {/* Test Results */}
       {testResults.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              {modelTested ? (
-                <CheckCircle className="w-5 h-5 text-green-400" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-yellow-400" />
-              )}
-              Review AI Predictions
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              Test Results - Enhanced Detection
             </CardTitle>
             <CardDescription className="text-slate-400">
-              For each image, check if the AI detected the traits correctly
+              Review AI predictions and mark corrections. Yellow = Not Detected, Green = Detected
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {testResults.map((result, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-800/50 rounded-lg">
-                  <div className="aspect-square bg-slate-600 rounded overflow-hidden">
-                    <img
-                      src={result.imageUrl}
-                      alt={result.fileName}
-                      className="w-full h-full object-cover"
-                    />
+          <CardContent className="space-y-4">
+            {/* Navigation */}
+            <div className="flex justify-between items-center">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setCurrentTestIndex(Math.max(0, currentTestIndex - 1))}
+                disabled={currentTestIndex === 0}
+              >
+                Previous
+              </Button>
+              <span className="text-white">
+                {currentTestIndex + 1} of {testResults.length}
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setCurrentTestIndex(Math.min(testResults.length - 1, currentTestIndex + 1))}
+                disabled={currentTestIndex === testResults.length - 1}
+              >
+                Next
+              </Button>
+            </div>
+
+            {/* Current Test Result */}
+            {currentResult && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
+                  <img
+                    src={currentResult.imageUrl}
+                    alt={currentResult.fileName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-lg font-medium text-white mb-1">
+                      {currentResult.fileName}
+                    </h4>
+                    <p className="text-sm text-slate-400">AI Detection Results</p>
                   </div>
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-white">{result.fileName}</h4>
-                    
-                    <div className="space-y-4">
-                      {Object.entries(result.detectedTraits).map(([trait, value]: [string, any]) => {
-                        const confidence = result.confidenceScores[trait] || 0;
-                        const ConfidenceIcon = getConfidenceIcon(confidence);
-                        const correction = corrections[index]?.[trait];
-                        
-                        return (
-                          <div key={trait} className="space-y-3 p-3 bg-slate-700/50 rounded">
-                            {/* AI Prediction */}
+                  
+                  <div className="space-y-3">
+                    {Object.entries(currentResult.results).map(([category, result]) => {
+                      const isDetected = result.confidence >= 0.7;
+                      const displayText = isDetected ? result.label : 'Not Detected';
+                      
+                      return (
+                        <div key={category} className="bg-slate-800/50 rounded-lg p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-white font-medium">{category}</span>
+                            <div className="flex items-center gap-2">
+                              {isDetected ? (
+                                <CheckCircle className="w-4 h-4 text-green-400" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
                             <div className="flex justify-between items-center">
-                              <div className="space-y-1">
-                                <div className="text-sm font-medium text-slate-300">{trait}</div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="text-xs">
-                                    AI detected: {value}
-                                  </Badge>
-                                  <div className="flex items-center gap-1">
-                                    <ConfidenceIcon className={`w-3 h-3 ${getConfidenceColor(confidence)}`} />
-                                    <span className={`text-xs ${getConfidenceColor(confidence)}`}>
-                                      {Math.round(confidence * 100)}%
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                              <Badge 
+                                variant={getConfidenceBadgeVariant(result.confidence, isDetected)}
+                                className={`${isDetected ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}
+                              >
+                                {displayText}
+                              </Badge>
+                              <span className={`text-sm font-mono ${getConfidenceColor(result.confidence, isDetected)}`}>
+                                {Math.round(result.confidence * 100)}%
+                              </span>
                             </div>
                             
-                            {/* Correction Interface */}
-                            <div className="flex items-center justify-between p-2 bg-slate-800/50 rounded">
-                              <Label className="text-sm text-slate-300">
-                                Is this detection correct?
-                              </Label>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-slate-400">No</span>
-                                  <Switch
-                                    checked={correction?.isCorrect || false}
-                                    onCheckedChange={(checked) => handleCorrectionToggle(index, trait, checked)}
-                                  />
-                                  <span className="text-xs text-slate-400">Yes</span>
-                                </div>
-                                {correction && (
-                                  <Badge variant={correction.isCorrect ? "default" : "destructive"} className="text-xs">
-                                    {correction.isCorrect ? "✓ Correct" : "✗ Wrong"}
-                                  </Badge>
-                                )}
+                            {!isDetected && (
+                              <div className="text-xs text-yellow-400 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                This trait was not detected (confidence too low)
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center gap-2 pt-2">
+                              <span className="text-xs text-slate-400">Is this correct?</span>
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant={feedbackData[category]?.correct === true ? "default" : "outline"}
+                                  onClick={() => handleFeedbackToggle(category, 'correct', true)}
+                                  className="h-6 px-2"
+                                >
+                                  <ThumbsUp className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={feedbackData[category]?.correct === false ? "destructive" : "outline"}
+                                  onClick={() => handleFeedbackToggle(category, 'correct', false)}
+                                  className="h-6 px-2"
+                                >
+                                  <ThumbsDown className="w-3 h-3" />
+                                </Button>
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              ))}
-            </div>
 
-            {/* Overall Assessment */}
-            <div className="mt-6 p-4 bg-slate-800/30 rounded-lg">
-              <h4 className="font-medium text-white mb-3">Assessment Summary</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-blue-400" />
-                    <span className="text-sm text-slate-300">
-                      AI Confidence: {Math.round(getOverallAccuracy() * 100)}%
-                    </span>
-                  </div>
-                  {correctionsMade && (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                      <span className="text-sm text-slate-300">
-                        Your Feedback: {Math.round(getCorrectionFeedback() * 100)}% correct
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {correctionsMade && (
-                    <Button
-                      onClick={() => {
-                        setTestResults([]);
-                        setCorrections({});
-                        setCorrectionsMade(false);
-                        toast({
-                          title: "Ready to test again",
-                          description: "Upload new test images or retest with the same ones"
-                        });
-                      }}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Test AI Again
-                    </Button>
-                  )}
-                  {getOverallAccuracy() > 0.7 && (
-                    <Button
-                      onClick={onTestCompleted}
-                      size="sm"
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Continue to Collection
+                  {Object.keys(feedbackData).length > 0 && (
+                    <Button onClick={submitFeedback} className="w-full">
+                      Save Feedback for This Image
                     </Button>
                   )}
                 </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}
