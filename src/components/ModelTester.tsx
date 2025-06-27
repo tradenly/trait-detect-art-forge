@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TestTube, Upload, CheckCircle, AlertCircle, RefreshCw, ThumbsUp, ThumbsDown, X } from 'lucide-react';
+import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, ThumbsUp, ThumbsDown, X } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
 import { findClosestLabel, validateDetectionResults } from '@/utils/traitUtils';
