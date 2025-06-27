@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +29,7 @@ const Index = () => {
   const canProceedToTest = Object.keys(trainedTraits).length > 0 && 
     Object.values(trainedTraits).some((category: any) => Object.keys(category).length > 0);
 
-  const canProceedToUpload = modelTested;
+  const canProceedToUpload = modelTested; // Need to complete testing first
   const canProceedToClassify = uploadedImages.length > 0 && canProceedToUpload;
   const canProceedToExport = detectedMetadata.length > 0;
 
@@ -144,7 +143,6 @@ const Index = () => {
                 <ModelTester 
                   trainedTraits={trainedTraits}
                   onTestCompleted={() => setModelTested(true)}
-                  modelTested={modelTested}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <Button 
@@ -153,7 +151,7 @@ const Index = () => {
                     className="w-full"
                     size="lg"
                   >
-                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Test Your Model First'}
+                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Complete Testing First'}
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
