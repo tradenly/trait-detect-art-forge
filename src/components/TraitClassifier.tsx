@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
@@ -41,31 +41,41 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     try {
       toast({
         title: "Starting analysis",
-        description: `Processing ${uploadedImages.length} images...`
+        description: `Processing ${uploadedImages.length} images with consistent thresholds...`
       });
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
+        console.log(`Processing image ${i + 1}/${uploadedImages.length}: ${file.name}`);
+        
         const img = await loadImageFromFile(file);
         const processedImg = await preprocessImage(img);
         const embedding = await getImageEmbedding(processedImg);
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
+        const detectionStatus: any = {};
         
-        // Classify each trained trait category
+        // Use the SAME logic as ModelTester for consistency
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           const result = findClosestLabel(embedding, traitValues as any);
-          if (result) {
+          if (result && result.confidence >= 0.7) { // Same threshold as ModelTester
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
+            detectionStatus[traitCategory] = 'detected';
+            console.log(`${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}%)`);
+          } else {
+            detectedTraits[traitCategory] = 'Not Detected';
+            confidenceScores[traitCategory] = result ? result.confidence : 0;
+            detectionStatus[traitCategory] = 'not_detected';
+            console.log(`${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}%)`);
           }
         }
 
         // Clean up tensor
         embedding.dispose();
 
-        // Generate initial metadata
+        // Generate metadata with clear detection status
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
           description: "AI-generated NFT with automatically detected traits",
@@ -74,11 +84,20 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           imageUrl: URL.createObjectURL(file),
           collectionName: "AI Trait Collection",
           collectionDescription: "Generated with AI Trait Forge",
-          attributes: Object.entries(detectedTraits).map(([trait_type, value]) => ({
+          attributes: Object.entries(detectedTraits)
+            .filter(([_, value]) => value !== 'Not Detected') // Only include detected traits
+            .map(([trait_type, value]) => ({
+              trait_type,
+              value,
+              confidence: confidenceScores[trait_type],
+              rarity: "0%" // Will be calculated in phase 2
+            })),
+          allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
             value,
             confidence: confidenceScores[trait_type],
-            rarity: "0%" // Will be calculated in phase 2
+            status: detectionStatus[trait_type],
+            rarity: "0%"
           }))
         };
 
@@ -91,7 +110,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         }
       }
 
-      // Phase 2: Calculate rarities
+      // Phase 2: Calculate rarities for detected traits only
       setCurrentPhase('calculating');
       toast({
         title: "Calculating rarities",
@@ -105,6 +124,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           rarity: calculateTraitRarity(attr.trait_type, attr.value, metadataArray)
         }));
         
+        // Update allTraitAnalysis with rarities too
+        item.allTraitAnalysis = item.allTraitAnalysis.map((analysis: any) => ({
+          ...analysis,
+          rarity: analysis.status === 'detected' 
+            ? calculateTraitRarity(analysis.trait_type, analysis.value, metadataArray)
+            : "N/A"
+        }));
+        
         setProgress(50 + Math.round(((i + 1) / metadataArray.length) * 50));
       }
 
@@ -114,7 +141,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       
       toast({
         title: "Analysis complete! 🎉",
-        description: `Successfully analyzed ${uploadedImages.length} images with trait detection and rarity calculation`
+        description: `Successfully analyzed ${uploadedImages.length} images with improved accuracy`
       });
     } catch (error) {
       console.error('Classification failed:', error);
@@ -186,10 +213,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-400" />
-            AI Trait Detection
+            AI Trait Detection (Improved)
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Analyze your collection using trained trait models
+            Analyze your collection using consistent detection thresholds
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -235,21 +262,21 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Analyzing Collection...' : 'Start AI Analysis'}
+            {classifying ? 'Analyzing Collection...' : 'Start Improved AI Analysis'}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Results Preview */}
+      {/* Results Preview with clearer status */}
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-purple-400" />
-              Detection Results
+              Detection Results (Enhanced)
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Preview of AI-detected traits with confidence scores
+              Clear detection status with confidence scores
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -294,26 +321,34 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                     File: {results[previewIndex].fileName}
                   </div>
                   <div className="space-y-2">
-                    {results[previewIndex].attributes.map((attr: any, index: number) => (
+                    {results[previewIndex].allTraitAnalysis.map((analysis: any, index: number) => (
                       <div key={index} className="flex justify-between items-center p-3 bg-slate-800/50 rounded">
-                        <span className="text-slate-300 text-sm font-medium">{attr.trait_type}</span>
+                        <span className="text-slate-300 text-sm font-medium">{analysis.trait_type}</span>
                         <div className="flex items-center gap-2">
-                          <Badge 
-                            variant="secondary" 
-                            className={attr.confidence >= 0.7 ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}
-                          >
-                            {attr.value}
-                          </Badge>
-                          <div className="text-xs text-slate-400 text-right">
-                            <div>{attr.rarity}</div>
-                            <div className="flex items-center gap-1">
-                              {attr.confidence >= 0.7 ? 
-                                <CheckCircle className="w-3 h-3 text-green-400" /> : 
+                          {analysis.status === 'detected' ? (
+                            <>
+                              <Badge variant="secondary" className="bg-green-900 text-green-300">
+                                {analysis.value}
+                              </Badge>
+                              <div className="text-xs text-slate-300 text-right">
+                                <div className="flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3 text-green-400" />
+                                  {Math.round(analysis.confidence * 100)}% confident
+                                </div>
+                                <div>{analysis.rarity}</div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <Badge variant="outline" className="bg-yellow-900/50 text-yellow-300 border-yellow-600">
+                                Not Detected
+                              </Badge>
+                              <div className="text-xs text-slate-400 text-right flex items-center gap-1">
                                 <AlertTriangle className="w-3 h-3 text-yellow-400" />
-                              }
-                              {Math.round((attr.confidence || 0) * 100)}%
-                            </div>
-                          </div>
+                                {Math.round(analysis.confidence * 100)}% (too low)
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -116,10 +116,21 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
+    // Check if this exact trait value already exists
+    if (trainedTraits[selectedCategory] && trainedTraits[selectedCategory][newTraitValue]) {
+      toast({
+        title: "Adding More Examples",
+        description: `Adding to existing "${selectedCategory} → ${newTraitValue}" trait`,
+      });
+    }
+
     setTraining(true);
 
     try {
       const updatedTraits = { ...trainedTraits };
+      if (!updatedTraits[selectedCategory]) {
+        updatedTraits[selectedCategory] = {};
+      }
       if (!updatedTraits[selectedCategory][newTraitValue]) {
         updatedTraits[selectedCategory][newTraitValue] = [];
       }

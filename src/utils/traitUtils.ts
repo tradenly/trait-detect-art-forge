@@ -1,4 +1,3 @@
-
 import { cosineSimilarity } from './embeddingUtils';
 import * as tf from '@tensorflow/tfjs';
 
@@ -20,6 +19,8 @@ export function findClosestLabel(
   let bestAvgSimilarity = -1;
   const labelScores: { [key: string]: number[] } = {};
   
+  console.log('Analyzing trait detection for labels:', Object.keys(labelEmbeddings));
+  
   // Calculate similarity against all examples for each label
   for (const [label, examples] of Object.entries(labelEmbeddings)) {
     const similarities: number[] = [];
@@ -33,15 +34,16 @@ export function findClosestLabel(
     const avgSimilarity = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
     labelScores[label] = similarities;
     
+    console.log(`Label "${label}": avg similarity = ${avgSimilarity.toFixed(3)}`);
+    
     if (avgSimilarity > bestAvgSimilarity) {
       bestAvgSimilarity = avgSimilarity;
       bestMatch = label;
     }
   }
   
-  // Increased threshold for more reliable predictions
-  // Also check that the best match is significantly better than others
-  if (bestAvgSimilarity > 0.6) {
+  // Consistent threshold across all components - 0.7 for high confidence
+  if (bestAvgSimilarity > 0.7) {
     // Calculate confidence based on how much better this match is
     const sortedScores = Object.values(labelScores)
       .map(scores => scores.reduce((sum, sim) => sum + sim, 0) / scores.length)
@@ -51,6 +53,8 @@ export function findClosestLabel(
       ? Math.min(1, bestAvgSimilarity / Math.max(sortedScores[1], 0.1))
       : bestAvgSimilarity;
     
+    console.log(`Best match: "${bestMatch}" with confidence ${confidence.toFixed(3)}`);
+    
     return {
       label: bestMatch!,
       confidence: confidence,
@@ -58,7 +62,12 @@ export function findClosestLabel(
     };
   }
   
-  return null;
+  console.log(`No confident match found. Best was ${bestAvgSimilarity.toFixed(3)} (below 0.7 threshold)`);
+  return {
+    label: bestMatch || 'Unknown',
+    confidence: bestAvgSimilarity,
+    avgSimilarity: bestAvgSimilarity
+  };
 }
 
 export function calculateTraitRarity(traitType: string, value: string, allMetadata: any[]): string {
