@@ -23,10 +23,14 @@ export async function getImageEmbedding(imgElement: HTMLImageElement): Promise<t
     throw new Error('Model not loaded. Call loadModel() first.');
   }
   
-  // Get the feature vector (embedding) instead of classification
-  // This gets the internal representation before the final classification layer
+  // Get deeper feature representation for better trait detection
   const embedding = model.infer(imgElement, true);
-  return embedding;
+  
+  // Normalize the embedding for better similarity comparison
+  const normalized = tf.div(embedding, tf.norm(embedding));
+  embedding.dispose();
+  
+  return normalized;
 }
 
 export function cosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
@@ -77,6 +81,8 @@ export async function preprocessImage(imgElement: HTMLImageElement): Promise<HTM
     canvas.width = 224;
     canvas.height = 224;
     
+    // Apply contrast enhancement for better feature detection
+    ctx.filter = 'contrast(110%) brightness(105%)';
     ctx.drawImage(imgElement, 0, 0, 224, 224);
     
     const processedImg = new Image();
@@ -84,4 +90,22 @@ export async function preprocessImage(imgElement: HTMLImageElement): Promise<HTM
     processedImg.onerror = reject;
     processedImg.src = canvas.toDataURL();
   });
+}
+
+// New function to validate training quality
+export function validateTrainingQuality(examples: any[]): { isValid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  
+  if (examples.length < 3) {
+    issues.push('Need at least 3 training examples per trait for reliable detection');
+  }
+  
+  if (examples.length < 5) {
+    issues.push('Recommend 5+ examples per trait for better accuracy');
+  }
+  
+  return {
+    isValid: examples.length >= 3,
+    issues
+  };
 }

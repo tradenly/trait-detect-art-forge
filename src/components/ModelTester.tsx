@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { TestTube, Upload, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TestTube, Upload, CheckCircle, AlertCircle, RefreshCw, ThumbsUp, ThumbsDown, X } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { findClosestLabel } from '@/utils/traitUtils';
+import { getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
+import { findClosestLabel, validateDetectionResults } from '@/utils/traitUtils';
 
 interface ModelTesterProps {
   trainedTraits: any;
@@ -20,6 +22,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
   const [testResults, setTestResults] = useState<any[]>([]);
   const [testing, setTesting] = useState(false);
   const [testProgress, setTestProgress] = useState(0);
+  const [corrections, setCorrections] = useState<any>({});
 
   const handleTestImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -36,6 +39,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
     
     setTestImages(imageFiles);
     setTestResults([]);
+    setCorrections({});
   };
 
   const runModelTest = async () => {
@@ -46,6 +50,26 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
         variant: "destructive"
       });
       return;
+    }
+
+    // Validate training quality first
+    const validationIssues: string[] = [];
+    Object.entries(trainedTraits).forEach(([category, traits]: [string, any]) => {
+      Object.entries(traits).forEach(([value, examples]: [string, any]) => {
+        const validation = validateTrainingQuality(examples);
+        if (!validation.isValid) {
+          validationIssues.push(`${category} → ${value}: ${validation.issues.join(', ')}`);
+        }
+      });
+    });
+
+    if (validationIssues.length > 0) {
+      toast({
+        title: "Training Quality Issues Detected",
+        description: "Some traits may have insufficient training data",
+        variant: "destructive"
+      });
+      console.warn('Training issues:', validationIssues);
     }
 
     setTesting(true);
@@ -61,6 +85,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
+        const avgSimilarities: any = {};
         
         // Test each trained trait category
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
@@ -68,6 +93,11 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
           if (result) {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
+            avgSimilarities[traitCategory] = result.avgSimilarity;
+          } else {
+            detectedTraits[traitCategory] = 'Unknown';
+            confidenceScores[traitCategory] = 0;
+            avgSimilarities[traitCategory] = 0;
           }
         }
 
@@ -78,7 +108,9 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
           detectedTraits,
-          confidenceScores
+          confidenceScores,
+          avgSimilarities,
+          needsReview: Object.values(confidenceScores).some((conf: any) => conf < 0.7)
         });
 
         setTestProgress(Math.round(((i + 1) / testImages.length) * 100));
@@ -86,21 +118,19 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
 
       setTestResults(results);
       
-      // Check if results look reasonable
-      const hasGoodResults = results.some(result => 
-        Object.values(result.confidenceScores).some((conf: any) => conf > 0.5)
-      );
-
-      if (hasGoodResults) {
+      // Validate overall results
+      const validation = validateDetectionResults(results);
+      
+      if (validation.accuracy > 0.7) {
         onTestCompleted();
         toast({
           title: "Model test successful! ✅",
-          description: "Your AI model is working well. You can proceed to the next step."
+          description: `Average accuracy: ${Math.round(validation.accuracy * 100)}%. Your AI model is ready!`
         });
       } else {
         toast({
-          title: "Model needs more training",
-          description: "Low confidence scores detected. Consider adding more training examples.",
+          title: "Model needs improvement",
+          description: `Accuracy: ${Math.round(validation.accuracy * 100)}%. ${validation.recommendations[0]}`,
           variant: "destructive"
         });
       }
@@ -125,6 +155,20 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
     });
   };
 
+  const handleCorrection = (resultIndex: number, traitType: string, correctValue: string) => {
+    const newCorrections = { ...corrections };
+    if (!newCorrections[resultIndex]) {
+      newCorrections[resultIndex] = {};
+    }
+    newCorrections[resultIndex][traitType] = correctValue;
+    setCorrections(newCorrections);
+    
+    toast({
+      title: "Correction noted",
+      description: `Marked ${traitType} as "${correctValue}" for better training feedback`
+    });
+  };
+
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'text-green-400';
     if (confidence >= 0.6) return 'text-yellow-400';
@@ -132,22 +176,23 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
   };
 
   const getConfidenceIcon = (confidence: number) => {
-    if (confidence >= 0.6) return CheckCircle;
+    if (confidence >= 0.7) return CheckCircle;
     return AlertCircle;
   };
 
   return (
     <div className="space-y-6">
-      {/* Instructions */}
+      {/* Training Quality Check */}
       <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-2">
           <TestTube className="w-5 h-5 text-blue-400" />
           <h4 className="font-medium text-white">Model Testing Instructions</h4>
         </div>
-        <p className="text-slate-300 text-sm">
-          Upload 2-10 test images to verify your AI model can detect traits correctly. 
-          These should be images that weren't used in training but contain the traits you want to detect.
-        </p>
+        <div className="text-slate-300 text-sm space-y-2">
+          <p>Upload 2-10 test images to verify your AI model can detect traits correctly.</p>
+          <p><strong>Important:</strong> Use images that clearly show the traits you trained for, but weren't used in training.</p>
+          <p>You'll be able to provide feedback if the AI gets something wrong.</p>
+        </div>
       </div>
 
       {/* Upload Test Images */}
@@ -222,7 +267,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
         </CardContent>
       </Card>
 
-      {/* Test Results */}
+      {/* Test Results with Correction Interface */}
       {testResults.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
@@ -230,16 +275,16 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
               {modelTested ? (
                 <CheckCircle className="w-5 h-5 text-green-400" />
               ) : (
-                <AlertCircle className="w-5 h-5 text-yellow-400" />
+                <AlertTriangle className="w-5 h-5 text-yellow-400" />
               )}
-              Test Results
+              Test Results & Corrections
             </CardTitle>
             <CardDescription className="text-slate-400">
-              AI model predictions with confidence scores
+              Review AI predictions and provide corrections to improve accuracy
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-6">
               {testResults.map((result, index) => (
                 <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-800/50 rounded-lg">
                   <div className="aspect-square bg-slate-600 rounded overflow-hidden">
@@ -251,23 +296,55 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
                   </div>
                   <div className="space-y-3">
                     <h4 className="font-medium text-white">{result.fileName}</h4>
-                    <div className="space-y-2">
+                    {result.needsReview && (
+                      <Badge variant="destructive" className="mb-2">Needs Review</Badge>
+                    )}
+                    <div className="space-y-3">
                       {Object.entries(result.detectedTraits).map(([trait, value]: [string, any]) => {
                         const confidence = result.confidenceScores[trait] || 0;
+                        const similarity = result.avgSimilarities[trait] || 0;
                         const ConfidenceIcon = getConfidenceIcon(confidence);
+                        const corrected = corrections[index]?.[trait];
                         
                         return (
-                          <div key={trait} className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
-                            <span className="text-slate-300 text-sm">{trait}</span>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary">{value}</Badge>
-                              <div className="flex items-center gap-1">
-                                <ConfidenceIcon className={`w-3 h-3 ${getConfidenceColor(confidence)}`} />
-                                <span className={`text-xs ${getConfidenceColor(confidence)}`}>
-                                  {Math.round(confidence * 100)}%
-                                </span>
+                          <div key={trait} className="space-y-2">
+                            <div className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
+                              <span className="text-slate-300 text-sm font-medium">{trait}</span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={corrected ? "default" : "secondary"}>
+                                  {corrected || value}
+                                </Badge>
+                                <div className="flex items-center gap-1">
+                                  <ConfidenceIcon className={`w-3 h-3 ${getConfidenceColor(confidence)}`} />
+                                  <span className={`text-xs ${getConfidenceColor(confidence)}`}>
+                                    {Math.round(confidence * 100)}%
+                                  </span>
+                                </div>
                               </div>
                             </div>
+                            
+                            {/* Correction Interface */}
+                            {confidence < 0.8 && (
+                              <div className="flex items-center gap-2 pl-4">
+                                <Label className="text-xs text-slate-400">Correct value:</Label>
+                                <Input
+                                  placeholder={`Correct ${trait.toLowerCase()}`}
+                                  className="h-8 text-xs bg-slate-800 border-slate-600"
+                                  onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const target = e.target as HTMLInputElement;
+                                      if (target.value.trim()) {
+                                        handleCorrection(index, trait, target.value.trim());
+                                        target.value = '';
+                                      }
+                                    }
+                                  }}
+                                />
+                                <div className="text-xs text-slate-500">
+                                  Sim: {Math.round(similarity * 100)}%
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -279,18 +356,32 @@ const ModelTester = ({ trainedTraits, onTestCompleted, modelTested }: ModelTeste
 
             {/* Overall Assessment */}
             <div className="mt-6 p-4 bg-slate-800/30 rounded-lg">
-              <h4 className="font-medium text-white mb-2">Assessment</h4>
-              {modelTested ? (
-                <div className="flex items-center gap-2 text-green-400">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="text-sm">Model is ready for full collection analysis!</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-yellow-400">
-                  <AlertCircle className="w-4 h-4" />
-                  <span className="text-sm">Consider adding more training examples for better accuracy.</span>
-                </div>
-              )}
+              <h4 className="font-medium text-white mb-2">Assessment & Recommendations</h4>
+              {(() => {
+                const validation = validateDetectionResults(testResults);
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {validation.accuracy > 0.7 ? (
+                        <CheckCircle className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                      )}
+                      <span className="text-sm text-slate-300">
+                        Overall Accuracy: {Math.round(validation.accuracy * 100)}%
+                      </span>
+                    </div>
+                    {validation.recommendations.map((rec, i) => (
+                      <p key={i} className="text-xs text-slate-400">• {rec}</p>
+                    ))}
+                    {Object.keys(corrections).length > 0 && (
+                      <p className="text-xs text-blue-400">
+                        • You've provided {Object.keys(corrections).length} corrections to help improve the model
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>

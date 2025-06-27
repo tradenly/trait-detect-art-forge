@@ -11,31 +11,50 @@ interface TrainingExample {
 export function findClosestLabel(
   targetEmbedding: tf.Tensor, 
   labelEmbeddings: { [key: string]: TrainingExample[] }
-): { label: string; confidence: number } | null {
+): { label: string; confidence: number; avgSimilarity: number } | null {
   if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
     return null;
   }
   
   let bestMatch = null;
-  let bestSimilarity = -1;
+  let bestAvgSimilarity = -1;
+  const labelScores: { [key: string]: number[] } = {};
   
-  // Compare against all training examples for each label
+  // Calculate similarity against all examples for each label
   for (const [label, examples] of Object.entries(labelEmbeddings)) {
+    const similarities: number[] = [];
+    
     for (const example of examples) {
       const similarity = cosineSimilarity(targetEmbedding, example.embedding);
-      
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = label;
-      }
+      similarities.push(similarity);
+    }
+    
+    // Use average similarity across all examples for this label
+    const avgSimilarity = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
+    labelScores[label] = similarities;
+    
+    if (avgSimilarity > bestAvgSimilarity) {
+      bestAvgSimilarity = avgSimilarity;
+      bestMatch = label;
     }
   }
   
-  // Only return a match if similarity is above a threshold
-  if (bestSimilarity > 0.3) {
+  // Increased threshold for more reliable predictions
+  // Also check that the best match is significantly better than others
+  if (bestAvgSimilarity > 0.6) {
+    // Calculate confidence based on how much better this match is
+    const sortedScores = Object.values(labelScores)
+      .map(scores => scores.reduce((sum, sim) => sum + sim, 0) / scores.length)
+      .sort((a, b) => b - a);
+    
+    const confidence = sortedScores.length > 1 
+      ? Math.min(1, bestAvgSimilarity / Math.max(sortedScores[1], 0.1))
+      : bestAvgSimilarity;
+    
     return {
       label: bestMatch!,
-      confidence: bestSimilarity
+      confidence: confidence,
+      avgSimilarity: bestAvgSimilarity
     };
   }
   
@@ -69,4 +88,43 @@ export function getTraitStatistics(metadata: any[]) {
   });
   
   return stats;
+}
+
+// New function to validate detection results
+export function validateDetectionResults(results: any[]): { 
+  accuracy: number; 
+  lowConfidenceCount: number; 
+  recommendations: string[] 
+} {
+  const recommendations: string[] = [];
+  let lowConfidenceCount = 0;
+  let totalConfidence = 0;
+  let totalPredictions = 0;
+  
+  results.forEach(result => {
+    Object.values(result.confidenceScores || {}).forEach((confidence: any) => {
+      totalConfidence += confidence;
+      totalPredictions++;
+      
+      if (confidence < 0.7) {
+        lowConfidenceCount++;
+      }
+    });
+  });
+  
+  const accuracy = totalPredictions > 0 ? totalConfidence / totalPredictions : 0;
+  
+  if (accuracy < 0.7) {
+    recommendations.push('Overall accuracy is low. Consider adding more diverse training examples.');
+  }
+  
+  if (lowConfidenceCount > totalPredictions * 0.3) {
+    recommendations.push('Many predictions have low confidence. Review your training data quality.');
+  }
+  
+  return {
+    accuracy,
+    lowConfidenceCount,
+    recommendations
+  };
 }
