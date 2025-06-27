@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,11 +54,9 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
   }, []);
 
   const addCategory = () => {
-    if (newCategoryName.trim()) {
+    if (newCategoryName && !categories.includes(newCategoryName)) {
       const updatedTraits = { ...trainedTraits };
-      if (!updatedTraits[newCategoryName]) {
-        updatedTraits[newCategoryName] = {};
-      }
+      updatedTraits[newCategoryName] = {};
       onTraitsUpdated(updatedTraits);
       setSelectedCategory(newCategoryName);
       setNewCategoryName('');
@@ -105,7 +104,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       return;
     }
 
-    if (!selectedCategory || !newTraitValue.trim()) {
+    if (!selectedCategory || !newTraitValue) {
       toast({
         title: "Missing Information",
         description: "Please select a category and enter a trait value",
@@ -117,12 +116,11 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
-    // Check if this exact trait value already exists in this category
-    const trimmedValue = newTraitValue.trim();
-    if (trainedTraits[selectedCategory] && trainedTraits[selectedCategory][trimmedValue]) {
+    // Check if this exact trait value already exists
+    if (trainedTraits[selectedCategory] && trainedTraits[selectedCategory][newTraitValue]) {
       toast({
         title: "Adding More Examples",
-        description: `Adding to existing "${selectedCategory} → ${trimmedValue}" trait`,
+        description: `Adding to existing "${selectedCategory} → ${newTraitValue}" trait`,
       });
     }
 
@@ -133,8 +131,8 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       if (!updatedTraits[selectedCategory]) {
         updatedTraits[selectedCategory] = {};
       }
-      if (!updatedTraits[selectedCategory][trimmedValue]) {
-        updatedTraits[selectedCategory][trimmedValue] = [];
+      if (!updatedTraits[selectedCategory][newTraitValue]) {
+        updatedTraits[selectedCategory][newTraitValue] = [];
       }
 
       for (const file of files) {
@@ -142,7 +140,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
         const processedImg = await preprocessImage(img);
         const embedding = await getImageEmbedding(processedImg);
         
-        updatedTraits[selectedCategory][trimmedValue].push({
+        updatedTraits[selectedCategory][newTraitValue].push({
           embedding: embedding,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file)
@@ -154,7 +152,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       
       toast({
         title: "Training Examples Added ✅",
-        description: `${files.length} examples added for ${selectedCategory} → ${trimmedValue}`
+        description: `${files.length} examples added for ${selectedCategory} → ${newTraitValue}`
       });
     } catch (error) {
       console.error('Training error:', error);
@@ -271,7 +269,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
               className="flex-1 bg-slate-800 border-slate-600 text-white"
               onKeyPress={(e) => e.key === 'Enter' && addCategory()}
             />
-            <Button onClick={addCategory} disabled={!newCategoryName.trim()}>
+            <Button onClick={addCategory} disabled={!newCategoryName}>
               <Plus className="w-4 h-4 mr-2" />
               Add Category
             </Button>
@@ -310,13 +308,13 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
           <CardHeader>
             <CardTitle className="text-white">2. Train Category: {selectedCategory}</CardTitle>
             <CardDescription className="text-slate-400">
-              Upload 3-5 example images for each trait value in this category. You can add multiple values to the same category (e.g., "Green Shorts", "Black Shorts").
+              Upload 3-5 example images for each trait value in this category
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
               <Input
-                placeholder={`Enter ${selectedCategory.toLowerCase()} value (e.g., Green, Black, Blue)`}
+                placeholder={`Enter ${selectedCategory.toLowerCase()} value (e.g., Red, Blue, None)`}
                 value={newTraitValue}
                 onChange={(e) => setNewTraitValue(e.target.value)}
                 className="flex-1 bg-slate-800 border-slate-600 text-white"
@@ -328,9 +326,9 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
                   accept="image/*"
                   onChange={handleTraitImageUpload}
                   className="absolute inset-0 opacity-0 cursor-pointer"
-                  disabled={!newTraitValue.trim() || !modelLoaded || training}
+                  disabled={!newTraitValue || !modelLoaded || training}
                 />
-                <Button disabled={!newTraitValue.trim() || !modelLoaded || training}>
+                <Button disabled={!newTraitValue || !modelLoaded || training}>
                   <Upload className="w-4 h-4 mr-2" />
                   {training ? 'Training...' : 'Upload Examples'}
                 </Button>
@@ -340,12 +338,12 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
             {/* Show current trait values for selected category */}
             {trainedTraits[selectedCategory] && Object.keys(trainedTraits[selectedCategory]).length > 0 && (
               <div className="space-y-3">
-                <Label className="text-white">Current Trait Values for {selectedCategory}:</Label>
+                <Label className="text-white">Current Trait Values:</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {Object.entries(trainedTraits[selectedCategory]).map(([value, examples]) => (
                     <div key={value} className="bg-slate-800/50 rounded-lg p-3">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-white">{selectedCategory}: {value}</span>
+                        <span className="text-sm font-medium text-white">{value}</span>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
                             {examples.length} examples

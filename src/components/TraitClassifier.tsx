@@ -40,8 +40,8 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
     try {
       toast({
-        title: "Starting enhanced analysis",
-        description: `Processing ${uploadedImages.length} images with improved detection accuracy...`
+        title: "Starting analysis",
+        description: `Processing ${uploadedImages.length} images with consistent thresholds...`
       });
 
       for (let i = 0; i < uploadedImages.length; i++) {
@@ -56,37 +56,26 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Use the EXACT SAME logic as ModelTester for perfect consistency
+        // Use the SAME logic as ModelTester for consistency
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          console.log(`Analyzing ${traitCategory} for ${file.name}`);
           const result = findClosestLabel(embedding, traitValues as any);
-          
-          if (result) {
-            const isDetected = result.confidence >= 0.7; // Same threshold as ModelTester
-            
-            if (isDetected) {
-              detectedTraits[traitCategory] = result.label;
-              confidenceScores[traitCategory] = result.confidence;
-              detectionStatus[traitCategory] = 'detected';
-              console.log(`✅ ${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}%)`);
-            } else {
-              detectedTraits[traitCategory] = 'Not Detected';
-              confidenceScores[traitCategory] = result.confidence;
-              detectionStatus[traitCategory] = 'not_detected';
-              console.log(`❌ ${traitCategory}: Not detected (${Math.round(result.confidence * 100)}% - below threshold)`);
-            }
+          if (result && result.confidence >= 0.7) { // Same threshold as ModelTester
+            detectedTraits[traitCategory] = result.label;
+            confidenceScores[traitCategory] = result.confidence;
+            detectionStatus[traitCategory] = 'detected';
+            console.log(`${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}%)`);
           } else {
             detectedTraits[traitCategory] = 'Not Detected';
-            confidenceScores[traitCategory] = 0;
+            confidenceScores[traitCategory] = result ? result.confidence : 0;
             detectionStatus[traitCategory] = 'not_detected';
-            console.log(`❌ ${traitCategory}: No detection result`);
+            console.log(`${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}%)`);
           }
         }
 
         // Clean up tensor
         embedding.dispose();
 
-        // Generate metadata with enhanced detection info
+        // Generate metadata with clear detection status
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
           description: "AI-generated NFT with automatically detected traits",
@@ -105,11 +94,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             })),
           allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
-            value: value === 'Not Detected' ? 'Not Detected' : value,
+            value,
             confidence: confidenceScores[trait_type],
             status: detectionStatus[trait_type],
-            rarity: "0%",
-            isDetected: detectionStatus[trait_type] === 'detected'
+            rarity: "0%"
           }))
         };
 
@@ -151,10 +139,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       setResults(metadataArray);
       setCurrentPhase('complete');
       
-      const detectedCount = metadataArray.reduce((sum, item) => sum + item.attributes.length, 0);
       toast({
-        title: "Enhanced analysis complete! 🎉",
-        description: `Successfully analyzed ${uploadedImages.length} images with ${detectedCount} total trait detections`
+        title: "Analysis complete! 🎉",
+        description: `Successfully analyzed ${uploadedImages.length} images with improved accuracy`
       });
     } catch (error) {
       console.error('Classification failed:', error);
@@ -221,36 +208,18 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
   return (
     <div className="space-y-6">
-      {/* Important Detection Notice */}
-      <Card className="bg-yellow-900/20 border-yellow-600">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-            <div className="space-y-2">
-              <h4 className="text-yellow-200 font-medium">Detection Guide</h4>
-              <div className="text-sm text-yellow-200 space-y-1">
-                <p><strong>🟢 Green:</strong> Trait detected with high confidence (70%+)</p>
-                <p><strong>🟡 Yellow:</strong> Trait NOT DETECTED (confidence below 70%)</p>
-                <p>Only green (detected) traits will be included in your final metadata.</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Classification Controls */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-400" />
-            AI Trait Detection (Enhanced)
+            AI Trait Detection (Improved)
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Analyze your collection using consistent detection thresholds with ModelTester
+            Analyze your collection using consistent detection thresholds
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-purple-400">{uploadedImages.length}</div>
@@ -298,16 +267,16 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         </CardContent>
       </Card>
 
-      {/* Results Preview with enhanced status display */}
+      {/* Results Preview with clearer status */}
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-purple-400" />
-              Detection Results (Enhanced with Clear Status)
+              Detection Results (Enhanced)
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Clear detection status with confidence scores and explanations
+              Clear detection status with confidence scores
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -334,7 +303,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               </Button>
             </div>
 
-            {/* Current Item Preview with enhanced display */}
+            {/* Current Item Preview */}
             {results[previewIndex] && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
@@ -356,7 +325,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                       <div key={index} className="flex justify-between items-center p-3 bg-slate-800/50 rounded">
                         <span className="text-slate-300 text-sm font-medium">{analysis.trait_type}</span>
                         <div className="flex items-center gap-2">
-                          {analysis.isDetected ? (
+                          {analysis.status === 'detected' ? (
                             <>
                               <Badge variant="secondary" className="bg-green-900 text-green-300">
                                 {analysis.value}
@@ -374,12 +343,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                               <Badge variant="outline" className="bg-yellow-900/50 text-yellow-300 border-yellow-600">
                                 Not Detected
                               </Badge>
-                              <div className="text-xs text-yellow-400 text-right">
-                                <div className="flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3 text-yellow-400" />
-                                  {Math.round(analysis.confidence * 100)}% (too low)
-                                </div>
-                                <div className="text-yellow-400">Below 70% threshold</div>
+                              <div className="text-xs text-slate-400 text-right flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                                {Math.round(analysis.confidence * 100)}% (too low)
                               </div>
                             </>
                           )}

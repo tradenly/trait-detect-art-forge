@@ -1,4 +1,3 @@
-
 import { cosineSimilarity } from './embeddingUtils';
 import * as tf from '@tensorflow/tfjs';
 
@@ -43,8 +42,8 @@ export function findClosestLabel(
     }
   }
   
-  // Higher threshold for more accurate detection (0.75 instead of 0.7)
-  if (bestAvgSimilarity > 0.75) {
+  // Consistent threshold across all components - 0.7 for high confidence
+  if (bestAvgSimilarity > 0.7) {
     // Calculate confidence based on how much better this match is
     const sortedScores = Object.values(labelScores)
       .map(scores => scores.reduce((sum, sim) => sum + sim, 0) / scores.length)
@@ -63,7 +62,7 @@ export function findClosestLabel(
     };
   }
   
-  console.log(`No confident match found. Best was ${bestAvgSimilarity.toFixed(3)} (below 0.75 threshold)`);
+  console.log(`No confident match found. Best was ${bestAvgSimilarity.toFixed(3)} (below 0.7 threshold)`);
   return {
     label: bestMatch || 'Unknown',
     confidence: bestAvgSimilarity,
@@ -100,7 +99,7 @@ export function getTraitStatistics(metadata: any[]) {
   return stats;
 }
 
-// Enhanced function to prevent conflicting trait detection
+// New function to validate detection results
 export function validateDetectionResults(results: any[]): { 
   accuracy: number; 
   lowConfidenceCount: number; 
@@ -112,23 +111,11 @@ export function validateDetectionResults(results: any[]): {
   let totalPredictions = 0;
   
   results.forEach(result => {
-    // Check for conflicting clothing traits (shorts vs pants)
-    const hasShorts = result.attributes?.some((attr: any) => 
-      attr.trait_type?.toLowerCase().includes('shorts') || attr.trait_type?.toLowerCase().includes('short')
-    );
-    const hasPants = result.attributes?.some((attr: any) => 
-      attr.trait_type?.toLowerCase().includes('pants') || attr.trait_type?.toLowerCase().includes('pant')
-    );
-    
-    if (hasShorts && hasPants) {
-      recommendations.push('Conflicting clothing detected (both shorts and pants). Review training data to avoid overlapping categories.');
-    }
-    
     Object.values(result.confidenceScores || {}).forEach((confidence: any) => {
       totalConfidence += confidence;
       totalPredictions++;
       
-      if (confidence < 0.75) {
+      if (confidence < 0.7) {
         lowConfidenceCount++;
       }
     });
@@ -136,7 +123,7 @@ export function validateDetectionResults(results: any[]): {
   
   const accuracy = totalPredictions > 0 ? totalConfidence / totalPredictions : 0;
   
-  if (accuracy < 0.75) {
+  if (accuracy < 0.7) {
     recommendations.push('Overall accuracy is low. Consider adding more diverse training examples.');
   }
   
