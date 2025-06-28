@@ -227,6 +227,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
   };
 
   const currentResult = testResults[currentTestIndex];
+  const enhancedStats = getEnhancedStats();
 
   return (
     <div className="space-y-6">
