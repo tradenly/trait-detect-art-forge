@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
+import { findClosestLabel, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
 
 interface TraitClassifierProps {
   uploadedImages: File[];
@@ -39,10 +39,17 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     const metadataArray: any[] = [];
 
     try {
+      // Enhanced pre-analysis
+      const trainingAnalysis = analyzeTrainingData(trainedTraits);
+      const adaptiveThreshold = trainingAnalysis.qualityScore > 0.7 ? 0.7 : 0.75;
+      
       toast({
-        title: "Starting enhanced analysis",
-        description: `Processing ${uploadedImages.length} images with improved detection accuracy...`
+        title: "Starting Enhanced Analysis",
+        description: `Processing ${uploadedImages.length} images with adaptive threshold (${Math.round(adaptiveThreshold * 100)}%)`
       });
+
+      console.log('Enhanced classification starting with adaptive threshold:', adaptiveThreshold);
+      console.log('Training quality score:', trainingAnalysis.qualityScore.toFixed(2));
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
@@ -56,13 +63,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Use the EXACT SAME logic as ModelTester for perfect consistency
+        // Enhanced detection with adaptive thresholds
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`Analyzing ${traitCategory} for ${file.name}`);
           const result = findClosestLabel(embedding, traitValues as any);
           
           if (result) {
-            const isDetected = result.confidence >= 0.7; // Same threshold as ModelTester
+            const isDetected = result.confidence >= adaptiveThreshold;
             
             if (isDetected) {
               detectedTraits[traitCategory] = result.label;
@@ -73,7 +80,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               detectedTraits[traitCategory] = 'Not Detected';
               confidenceScores[traitCategory] = result.confidence;
               detectionStatus[traitCategory] = 'not_detected';
-              console.log(`❌ ${traitCategory}: Not detected (${Math.round(result.confidence * 100)}% - below threshold)`);
+              console.log(`❌ ${traitCategory}: Not detected (${Math.round(result.confidence * 100)}% - below ${Math.round(adaptiveThreshold * 100)}%)`);
             }
           } else {
             detectedTraits[traitCategory] = 'Not Detected';
@@ -86,22 +93,27 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         // Clean up tensor
         embedding.dispose();
 
-        // Generate metadata with enhanced detection info
+        // Enhanced metadata generation
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with automatically detected traits",
+          description: "AI-generated NFT with enhanced trait detection",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          collectionName: "AI Trait Collection",
-          collectionDescription: "Generated with AI Trait Forge",
+          collectionName: "Enhanced AI Trait Collection",
+          collectionDescription: "Generated with Enhanced AI Trait Forge",
+          processingInfo: {
+            adaptiveThreshold: adaptiveThreshold,
+            trainingQuality: trainingAnalysis.qualityScore,
+            detectionMethod: "Enhanced MobileNet v2"
+          },
           attributes: Object.entries(detectedTraits)
-            .filter(([_, value]) => value !== 'Not Detected') // Only include detected traits
+            .filter(([_, value]) => value !== 'Not Detected')
             .map(([trait_type, value]) => ({
               trait_type,
               value,
               confidence: confidenceScores[trait_type],
-              rarity: "0%" // Will be calculated in phase 2
+              rarity: "0%"
             })),
           allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
@@ -109,14 +121,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             confidence: confidenceScores[trait_type],
             status: detectionStatus[trait_type],
             rarity: "0%",
-            isDetected: detectionStatus[trait_type] === 'detected'
+            isDetected: detectionStatus[trait_type] === 'detected',
+            threshold: adaptiveThreshold
           }))
         };
 
         metadataArray.push(metadata);
         setProgress(Math.round(((i + 1) / uploadedImages.length) * 50));
         
-        // Update results incrementally for preview
         if (i % 10 === 0 || i === uploadedImages.length - 1) {
           setResults([...metadataArray]);
         }
@@ -152,15 +164,20 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       setCurrentPhase('complete');
       
       const detectedCount = metadataArray.reduce((sum, item) => sum + item.attributes.length, 0);
+      const avgConfidence = metadataArray.reduce((sum, item) => {
+        const confidences = item.attributes.map((attr: any) => attr.confidence || 0);
+        return sum + (confidences.reduce((a, b) => a + b, 0) / confidences.length || 0);
+      }, 0) / metadataArray.length;
+      
       toast({
-        title: "Enhanced analysis complete! 🎉",
-        description: `Successfully analyzed ${uploadedImages.length} images with ${detectedCount} total trait detections`
+        title: "Enhanced Analysis Complete! 🎉",
+        description: `${uploadedImages.length} images analyzed, ${detectedCount} traits detected (avg: ${Math.round(avgConfidence * 100)}% confidence)`
       });
     } catch (error) {
       console.error('Classification failed:', error);
       toast({
         title: "Classification failed",
-        description: "Error during trait detection",
+        description: "Error during enhanced trait detection",
         variant: "destructive"
       });
       setCurrentPhase('idle');

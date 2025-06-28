@@ -4,9 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, X, Upload, Brain, Trash2 } from 'lucide-react';
+import { Plus, X, Upload, Brain, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
+import { loadModel, getImageEmbedding, preprocessImage, batchProcessImages, validateTrainingQuality } from '@/utils/embeddingUtils';
 import * as tf from '@tensorflow/tfjs';
 
 interface TrainingExample {
@@ -39,8 +39,8 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     loadModel().then(() => {
       setModelLoaded(true);
       toast({
-        title: "AI Model Loaded ✅",
-        description: "Ready to train trait detection"
+        title: "Enhanced AI Model Loaded ✅",
+        description: "MobileNet v2 ready with improved accuracy"
       });
     }).catch((error) => {
       console.error('Model loading failed:', error);
@@ -117,12 +117,15 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
-    // Check if this exact trait value already exists in this category
+    // Enhanced validation
     const trimmedValue = newTraitValue.trim();
-    if (trainedTraits[selectedCategory] && trainedTraits[selectedCategory][trimmedValue]) {
+    const existingExamples = trainedTraits[selectedCategory]?.[trimmedValue]?.length || 0;
+    
+    // Warn if adding too many examples (diminishing returns)
+    if (existingExamples >= 8) {
       toast({
-        title: "Adding More Examples",
-        description: `Adding to existing "${selectedCategory} → ${trimmedValue}" trait`,
+        title: "Consider Other Values",
+        description: "8+ examples per trait value provides optimal accuracy. Consider training other values.",
       });
     }
 
@@ -137,24 +140,30 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
         updatedTraits[selectedCategory][trimmedValue] = [];
       }
 
-      for (const file of files) {
-        const img = await loadImageFromFile(file);
-        const processedImg = await preprocessImage(img);
-        const embedding = await getImageEmbedding(processedImg);
-        
+      // Use batch processing for better performance
+      const imageElements = await Promise.all(
+        files.map(file => loadImageFromFile(file))
+      );
+      
+      const embeddings = await batchProcessImages(imageElements, 3); // Process in batches of 3
+
+      for (let i = 0; i < files.length; i++) {
         updatedTraits[selectedCategory][trimmedValue].push({
-          embedding: embedding,
-          fileName: file.name,
-          imageUrl: URL.createObjectURL(file)
+          embedding: embeddings[i],
+          fileName: files[i].name,
+          imageUrl: URL.createObjectURL(files[i])
         });
       }
 
       onTraitsUpdated(updatedTraits);
       setNewTraitValue('');
       
+      // Enhanced validation feedback
+      const validation = validateTrainingQuality(updatedTraits[selectedCategory][trimmedValue]);
+      
       toast({
         title: "Training Examples Added ✅",
-        description: `${files.length} examples added for ${selectedCategory} → ${trimmedValue}`
+        description: `${files.length} examples added. ${validation.recommendations.length > 0 ? validation.recommendations[0] : 'Quality looks good!'}`
       });
     } catch (error) {
       console.error('Training error:', error);
@@ -226,13 +235,31 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     return total;
   };
 
+  const getTrainingQualityIndicator = (examples: TrainingExample[]) => {
+    const validation = validateTrainingQuality(examples);
+    if (validation.isValid && examples.length >= 5) {
+      return <CheckCircle className="w-4 h-4 text-green-400" />;
+    } else if (validation.isValid) {
+      return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
+    }
+    return <X className="w-4 h-4 text-red-400" />;
+  };
+
+  const getQualityMessage = (examples: TrainingExample[]) => {
+    const validation = validateTrainingQuality(examples);
+    if (examples.length >= 8) return "Excellent (8+ examples)";
+    if (examples.length >= 5) return "Good (5+ examples)";
+    if (examples.length >= 3) return "Minimum (3+ examples)";
+    return "Insufficient (<3 examples)";
+  };
+
   return (
     <div className="space-y-6">
-      {/* Model Status */}
+      {/* Enhanced Model Status */}
       <div className="flex items-center gap-2 p-3 bg-slate-700/50 rounded-lg">
         <Brain className={`w-5 h-5 ${modelLoaded ? 'text-green-400' : 'text-yellow-400'}`} />
         <span className="text-white">
-          {modelLoaded ? 'AI Model Ready' : 'Loading AI Model...'}
+          {modelLoaded ? 'Enhanced AI Model Ready (MobileNet v2)' : 'Loading Enhanced AI Model...'}
         </span>
         {getTotalTrainingExamples() > 0 && (
           <Badge variant="secondary" className="ml-auto">
@@ -241,16 +268,16 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
         )}
       </div>
 
-      {/* Instructions */}
+      {/* Enhanced Instructions */}
       <Card className="bg-blue-900/20 border-blue-700">
         <CardHeader>
-          <CardTitle className="text-white text-lg">How to Train Your AI</CardTitle>
+          <CardTitle className="text-white text-lg">AI Training Best Practices</CardTitle>
         </CardHeader>
         <CardContent className="text-slate-300 space-y-2">
-          <p><strong>Step 1:</strong> Add trait categories (e.g., "Clothing", "Background", "Accessories")</p>
-          <p><strong>Step 2:</strong> For each category, define values (e.g., "Red Shirt", "Blue Shirt", "No Shirt")</p>
-          <p><strong>Step 3:</strong> Upload 3-5 example images for each trait value to teach the AI</p>
-          <p><strong>Step 4:</strong> Test your model before processing your full collection</p>
+          <p><strong>Quality over Quantity:</strong> 5-8 high-quality examples per trait work better than many poor ones</p>
+          <p><strong>Diverse Examples:</strong> Include different angles, lighting, and backgrounds</p>
+          <p><strong>Clear Images:</strong> Use high-resolution, well-lit images for best results</p>
+          <p><strong>Avoid Conflicts:</strong> Don't train overlapping traits (e.g., "shorts" and "pants" for same image)</p>
         </CardContent>
       </Card>
 
@@ -310,7 +337,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
           <CardHeader>
             <CardTitle className="text-white">2. Train Category: {selectedCategory}</CardTitle>
             <CardDescription className="text-slate-400">
-              Upload 3-5 example images for each trait value in this category. You can add multiple values to the same category (e.g., "Green Shorts", "Black Shorts").
+              Upload 5-8 diverse, high-quality examples for optimal AI accuracy. Quality indicators show training status.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -347,6 +374,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-medium text-white">{selectedCategory}: {value}</span>
                         <div className="flex items-center gap-2">
+                          {getTrainingQualityIndicator(examples)}
                           <Badge variant="outline" className="text-xs">
                             {examples.length} examples
                           </Badge>
@@ -358,6 +386,9 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
+                      </div>
+                      <div className="text-xs text-slate-400 mb-2">
+                        {getQualityMessage(examples)}
                       </div>
                       <div className="grid grid-cols-4 gap-1">
                         {examples.slice(0, 4).map((example, index) => (

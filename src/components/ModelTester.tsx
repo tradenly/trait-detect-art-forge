@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, ThumbsUp, ThumbsDown, X } from 'lucide-react';
+import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, ThumbsUp, ThumbsDown, X, Brain } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
-import { findClosestLabel, validateDetectionResults } from '@/utils/traitUtils';
+import { findClosestLabel, validateDetectionResults, analyzeTrainingData } from '@/utils/traitUtils';
 
 interface TraitResult {
   label: string;
@@ -44,6 +43,13 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     setTestResults([]);
     setCurrentTestIndex(0);
     setTestingCompleted(false);
+    
+    if (files.length > 0) {
+      toast({
+        title: "Test Images Loaded",
+        description: `Ready to test ${files.length} images with enhanced AI model`
+      });
+    }
   };
 
   const runTests = async () => {
@@ -65,11 +71,22 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
       return;
     }
 
+    // Pre-flight training data analysis
+    const trainingAnalysis = analyzeTrainingData(trainedTraits);
+    if (trainingAnalysis.qualityScore < 0.3) {
+      toast({
+        title: "Training Data Quality Warning",
+        description: "Low training quality detected. Results may be inaccurate.",
+        variant: "destructive"
+      });
+    }
+
     setTesting(true);
     setProgress(0);
     const results: TestResult[] = [];
 
-    console.log('Starting model testing with trained traits:', Object.keys(trainedTraits));
+    console.log('Starting enhanced model testing with trained traits:', Object.keys(trainedTraits));
+    console.log('Training quality score:', trainingAnalysis.qualityScore.toFixed(2));
 
     try {
       for (let i = 0; i < testImages.length; i++) {
@@ -82,12 +99,17 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         
         const imageResults: { [category: string]: TraitResult } = {};
         
-        // Test against all trained trait categories with STRICTER confidence threshold
+        // Enhanced testing with adaptive thresholds
         for (const [category, categoryTraits] of Object.entries(trainedTraits)) {
           console.log(`Testing category: ${category}`);
           const result = findClosestLabel(embedding, categoryTraits as any);
           
-          if (result && result.confidence >= 0.8) { // Stricter threshold for testing
+          // Use adaptive threshold based on training quality
+          const baseThreshold = 0.75;
+          const qualityAdjustment = trainingAnalysis.qualityScore > 0.7 ? 0.05 : -0.05;
+          const adaptiveThreshold = baseThreshold + qualityAdjustment;
+          
+          if (result && result.confidence >= adaptiveThreshold) {
             imageResults[category] = {
               label: result.label,
               confidence: result.confidence,
@@ -100,7 +122,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
               confidence: result?.confidence || 0,
               avgSimilarity: result?.avgSimilarity || 0
             };
-            console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0})`);
+            console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0} < ${adaptiveThreshold.toFixed(3)})`);
           }
         }
         
@@ -120,9 +142,12 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
       setCurrentTestIndex(0);
       setTestingCompleted(true);
       
+      // Enhanced completion analysis
+      const detectionAnalysis = validateDetectionResults(results);
+      
       toast({
-        title: "Testing complete! 🧪",
-        description: `Tested ${testImages.length} images across ${Object.keys(trainedTraits).length} trait categories`
+        title: "Enhanced Testing Complete! 🧪",
+        description: `Tested ${testImages.length} images. Accuracy: ${Math.round(detectionAnalysis.accuracy * 100)}%`
       });
     } catch (error) {
       console.error('Testing failed:', error);
@@ -178,6 +203,18 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     });
   };
 
+  const getEnhancedStats = () => {
+    if (Object.keys(trainedTraits).length === 0) return null;
+    
+    const analysis = analyzeTrainingData(trainedTraits);
+    return {
+      totalExamples: analysis.totalExamples,
+      qualityScore: analysis.qualityScore,
+      categories: Object.keys(trainedTraits).length,
+      recommendations: analysis.recommendations
+    };
+  };
+
   const getConfidenceColor = (confidence: number, isDetected: boolean) => {
     if (!isDetected || confidence < 0.8) return 'text-yellow-400';
     if (confidence >= 0.9) return 'text-green-400';
@@ -193,6 +230,28 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Enhanced Training Quality Indicator */}
+      {enhancedStats && (
+        <Card className={`${enhancedStats.qualityScore >= 0.7 ? 'bg-green-900/20 border-green-600' : enhancedStats.qualityScore >= 0.4 ? 'bg-yellow-900/20 border-yellow-600' : 'bg-red-900/20 border-red-600'}`}>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Brain className={`w-5 h-5 ${enhancedStats.qualityScore >= 0.7 ? 'text-green-400' : enhancedStats.qualityScore >= 0.4 ? 'text-yellow-400' : 'text-red-400'} mt-0.5 flex-shrink-0`} />
+              <div className="space-y-2">
+                <h4 className={`font-medium ${enhancedStats.qualityScore >= 0.7 ? 'text-green-200' : enhancedStats.qualityScore >= 0.4 ? 'text-yellow-200' : 'text-red-200'}`}>
+                  Training Quality: {Math.round(enhancedStats.qualityScore * 100)}%
+                </h4>
+                <div className="text-sm space-y-1">
+                  <p>{enhancedStats.totalExamples} total examples across {enhancedStats.categories} categories</p>
+                  {enhancedStats.recommendations.length > 0 && (
+                    <p className="text-xs opacity-90">{enhancedStats.recommendations[0]}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Important Detection Guide */}
       <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4">
         <div className="flex items-start gap-2">
@@ -203,15 +262,15 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         </div>
       </div>
 
-      {/* Test Controls */}
+      {/* Enhanced Test Controls */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <TestTube className="w-5 h-5 text-blue-400" />
-            AI Model Testing
+            Enhanced AI Model Testing
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Test your trained AI model with sample images to verify accuracy before processing your collection
+            Test with adaptive thresholds and comprehensive analysis for maximum accuracy
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
