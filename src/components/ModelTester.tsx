@@ -340,7 +340,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
               Test Results Review
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review AI predictions. Yellow = Not Detected (confidence too low), Green = Detected with high confidence
+              Review AI predictions with full trait details. Yellow = Not Detected, Green = Detected with high confidence
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -388,7 +388,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                   <div className="space-y-3">
                     {Object.entries(currentResult.results).map(([category, result]) => {
                       const isDetected = result.confidence >= 0.8 && result.label !== 'Not Detected';
-                      const displayText = isDetected ? result.label : 'This trait was not detected';
+                      const displayText = isDetected ? `${category}: ${result.label}` : `${category}: Not Detected`;
                       
                       return (
                         <div key={category} className="bg-slate-800/50 rounded-lg p-4">
@@ -415,6 +415,12 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                                 {Math.round(result.confidence * 100)}%
                               </span>
                             </div>
+                            
+                            {isDetected && (
+                              <div className="text-xs text-slate-400 mt-1">
+                                Detected Value: <span className="text-white font-medium">{result.label}</span>
+                              </div>
+                            )}
                             
                             <div className="flex items-center gap-2 pt-2">
                               <span className="text-xs text-slate-400">Is this correct?</span>
