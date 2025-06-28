@@ -93,23 +93,45 @@ export async function getEnhancedEmbedding(imgElement: HTMLImageElement): Promis
         // Clean up input tensor
         tensor.dispose();
         
-        // Apply multiple pooling strategies with proper bounds checking
-        const globalAvg = tf.mean(features, [1, 2], true);
-        const globalMax = tf.max(features, [1, 2], true);
+        // Check tensor shape and apply appropriate pooling
+        const shape = features.shape;
+        console.log('Features shape:', shape);
         
-        // Combine pooling strategies
-        const combined = tf.concat([globalAvg, globalMax], -1);
+        let pooledFeature: tf.Tensor;
+        
+        if (shape.length === 4) {
+          // 4D tensor: [batch, height, width, channels]
+          // Use spatial dimensions [1, 2] for pooling
+          const globalAvg = tf.mean(features, [1, 2], true);
+          const globalMax = tf.max(features, [1, 2], true);
+          pooledFeature = tf.concat([globalAvg, globalMax], -1);
+          globalAvg.dispose();
+          globalMax.dispose();
+        } else if (shape.length === 2) {
+          // 2D tensor: [batch, features] - already flattened
+          pooledFeature = features.clone();
+        } else if (shape.length === 3) {
+          // 3D tensor: [batch, spatial, channels]
+          const globalAvg = tf.mean(features, [1], true);
+          const globalMax = tf.max(features, [1], true);
+          pooledFeature = tf.concat([globalAvg, globalMax], -1);
+          globalAvg.dispose();
+          globalMax.dispose();
+        } else {
+          // Fallback: flatten the tensor
+          pooledFeature = features.flatten().expandDims();
+        }
         
         // Normalize to prevent out-of-range values
-        const normalized = tf.div(combined, tf.add(tf.norm(combined), 1e-8));
+        const norm = tf.norm(pooledFeature);
+        const normalized = tf.div(pooledFeature, tf.add(norm, 1e-8));
         
         embeddings.push(normalized);
         
         // Clean up intermediate tensors
         features.dispose();
-        globalAvg.dispose();
-        globalMax.dispose();
-        combined.dispose();
+        pooledFeature.dispose();
+        norm.dispose();
         
       } catch (error) {
         console.warn('Failed to process augmented version:', error);
@@ -118,7 +140,41 @@ export async function getEnhancedEmbedding(imgElement: HTMLImageElement): Promis
     }
     
     if (embeddings.length === 0) {
-      throw new Error('No embeddings could be extracted');
+      // Fallback to basic embedding if all augmented versions fail
+      console.log('Falling back to basic embedding');
+      const tensor = tf.browser.fromPixels(imgElement)
+        .resizeNearestNeighbor([224, 224])
+        .toFloat()
+        .div(255.0)
+        .expandDims();
+      
+      const features = models.mobilenet.infer(tensor, true);
+      tensor.dispose();
+      
+      // Handle basic embedding with proper shape checking
+      const shape = features.shape;
+      let basicEmbedding: tf.Tensor;
+      
+      if (shape.length === 4) {
+        const globalAvg = tf.mean(features, [1, 2], true);
+        basicEmbedding = globalAvg;
+      } else if (shape.length === 2) {
+        basicEmbedding = features.clone();
+      } else {
+        basicEmbedding = features.flatten().expandDims();
+      }
+      
+      const norm = tf.norm(basicEmbedding);
+      const normalized = tf.div(basicEmbedding, tf.add(norm, 1e-8));
+      const clampedEmbedding = tf.clipByValue(normalized, -2.0, 2.0);
+      
+      // Cleanup
+      features.dispose();
+      basicEmbedding.dispose();
+      norm.dispose();
+      normalized.dispose();
+      
+      return clampedEmbedding;
     }
     
     // Create ensemble embedding with proper error handling
@@ -157,6 +213,17 @@ export function calculateAdvancedSimilarity(embedding1: tf.Tensor, embedding2: t
   try {
     const flat1 = embedding1.flatten();
     const flat2 = embedding2.flatten();
+    
+    // Ensure tensors have the same shape
+    const shape1 = flat1.shape[0];
+    const shape2 = flat2.shape[0];
+    
+    if (shape1 !== shape2) {
+      console.warn('Tensor shape mismatch in similarity calculation:', shape1, 'vs', shape2);
+      flat1.dispose();
+      flat2.dispose();
+      return { cosine: 0, euclidean: 0, manhattan: 0, composite: 0 };
+    }
     
     // Cosine similarity with safe division
     const dotProduct = tf.sum(tf.mul(flat1, flat2));
