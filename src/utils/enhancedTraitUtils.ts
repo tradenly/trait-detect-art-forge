@@ -119,7 +119,7 @@ export function findBestTraitMatch(
 }
 
 // Quality-based training data analysis
-export function analyzeTrainingQuality(trainedTraits: any): {
+export function analyzeTrainingQuality(trainedTraits: { [category: string]: { [value: string]: any[] } }): {
   overallQuality: number;
   categoryAnalysis: { [key: string]: { quality: number; recommendations: string[] } };
   recommendations: string[];
@@ -135,7 +135,7 @@ export function analyzeTrainingQuality(trainedTraits: any): {
     let valueCount = 0;
     const categoryRecommendations: string[] = [];
     
-    for (const [value, examples] of Object.entries(values as any)) {
+    for (const [value, examples] of Object.entries(values)) {
       const exampleCount = examples.length;
       
       // Quality scoring based on research best practices
