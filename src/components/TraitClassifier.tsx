@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -46,11 +47,11 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       const trainingAnalysis = analyzeTrainingData(trainedTraits);
       
       toast({
-        title: "🚀 Enhanced AI Analysis Starting",
+        title: "🔍 Starting Strict AI Analysis",
         description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality`
       });
 
-      console.log('🧠 Enhanced AI classification starting');
+      console.log('🧠 Starting classification with strict thresholds');
       console.log('📊 Training quality:', trainingAnalysis.qualityScore.toFixed(2));
 
       for (let i = 0; i < uploadedImages.length; i++) {
@@ -65,54 +66,52 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Enhanced detection with category-specific optimization
+        // Strict detection with conservative thresholds
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Analyzing ${traitCategory} for ${file.name}`);
           
-          // Use enhanced detection with category context
           const result = findClosestLabel(embedding, traitValues as any, traitCategory);
           
-          if (result && result.label !== 'Not Detected' && result.confidence >= 0.72) {
+          // Only accept high-confidence detections
+          if (result && result.label !== 'Not Detected' && result.confidence >= 0.78) {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
             detectionStatus[traitCategory] = 'detected';
             console.log(`✅ ${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}% confidence)`);
           } else {
-            detectedTraits[traitCategory] = 'Not Detected';
-            confidenceScores[traitCategory] = result?.confidence || 0;
+            // Don't add "Not Detected" traits to avoid clutter
             detectionStatus[traitCategory] = 'not_detected';
-            console.log(`❌ ${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}% confidence)`);
+            confidenceScores[traitCategory] = result?.confidence || 0;
+            console.log(`❌ ${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}% confidence, threshold: 78%)`);
           }
         }
 
         embedding.dispose();
 
-        // Create properly formatted attributes array
-        const attributes = Object.entries(detectedTraits)
-          .filter(([_, value]) => value !== 'Not Detected')
-          .map(([trait_type, value]) => ({
-            trait_type,
-            value: value as string,
-            confidence: confidenceScores[trait_type],
-            rarity: "0%" // Will be calculated later
-          }));
+        // Create attributes array only from detected traits
+        const attributes = Object.entries(detectedTraits).map(([trait_type, value]) => ({
+          trait_type,
+          value: value as string,
+          confidence: confidenceScores[trait_type],
+          rarity: "0%" // Will be calculated later
+        }));
 
         // Enhanced metadata generation
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with enhanced trait detection",
+          description: "AI-generated NFT with strict trait detection",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
           collectionName: "AI Detected Trait Collection",
-          collectionDescription: "Generated with Enhanced AI Detection",
+          collectionDescription: "Generated with Strict AI Detection",
           attributes,
-          confidenceScores, // Add confidence scores for metadata
-          allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
+          confidenceScores, // Keep confidence scores for analysis
+          allTraitAnalysis: Object.entries(trainedTraits).map(([trait_type, values]: [string, any]) => ({
             trait_type,
-            value: value === 'Not Detected' ? 'Not Detected' : value as string,
-            confidence: confidenceScores[trait_type],
-            status: detectionStatus[trait_type],
+            value: detectedTraits[trait_type] || 'Not Detected',
+            confidence: confidenceScores[trait_type] || 0,
+            status: detectionStatus[trait_type] || 'not_detected',
             rarity: "0%",
             isDetected: detectionStatus[trait_type] === 'detected'
           }))
@@ -155,20 +154,18 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       setCurrentPhase('complete');
       
       const detectedCount = metadataArray.reduce((sum, item) => sum + item.attributes.length, 0);
-      const avgConfidence = metadataArray.reduce((sum, item) => {
-        const confidences = item.attributes.map((attr: any) => attr.confidence || 0);
-        return sum + (confidences.reduce((a, b) => a + b, 0) / confidences.length || 0);
-      }, 0) / metadataArray.length;
+      const totalAnalyzed = metadataArray.length * Object.keys(trainedTraits).length;
+      const detectionRate = ((detectedCount / totalAnalyzed) * 100).toFixed(1);
       
       toast({
-        title: "🎉 Enhanced Analysis Complete!",
-        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (avg: ${Math.round(avgConfidence * 100)}% confidence)`
+        title: "🎉 Strict Analysis Complete!",
+        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% detection rate)`
       });
     } catch (error) {
-      console.error('Enhanced classification failed:', error);
+      console.error('Classification failed:', error);
       toast({
         title: "Classification failed",
-        description: "Error during enhanced trait detection",
+        description: "Error during trait detection",
         variant: "destructive"
       });
       setCurrentPhase('idle');
@@ -223,29 +220,29 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   function getPhaseDescription() {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running enhanced AI analysis with adaptive thresholds...';
+        return 'Running strict AI analysis with high accuracy thresholds...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Enhanced analysis complete!';
+        return 'Strict analysis complete!';
       default:
-        return 'Ready to start enhanced analysis';
+        return 'Ready to start strict analysis';
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Enhanced AI Notice */}
+      {/* Analysis Notice */}
       <Card className="bg-blue-900/20 border-blue-600">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-blue-200 font-medium">🚀 Enhanced AI Detection System</h4>
+              <h4 className="text-blue-200 font-medium">🔍 Strict AI Detection System</h4>
               <div className="text-sm text-blue-200 space-y-1">
-                <p><strong>Adaptive Thresholds:</strong> Automatically adjusts based on training quality</p>
-                <p><strong>Multi-Factor Scoring:</strong> Uses advanced similarity calculations</p>
-                <p><strong>Quality Focused:</strong> Optimized for accuracy over speed</p>
+                <p><strong>High Accuracy:</strong> Uses strict thresholds (78%+ confidence required)</p>
+                <p><strong>Quality Focus:</strong> Only accepts clear, unambiguous detections</p>
+                <p><strong>Conservative Approach:</strong> Prefers accuracy over detection rate</p>
               </div>
             </div>
           </div>
@@ -256,10 +253,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-blue-400" />
-            🚀 Enhanced AI Detection
+            🔍 Strict AI Detection
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Advanced trait detection with adaptive thresholds and quality optimization
+            High-accuracy trait detection with conservative thresholds
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -295,7 +292,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Enhanced Analysis...' : '🚀 Start Enhanced Detection'}
+            {classifying ? 'Running Strict Analysis...' : '🔍 Start Strict Detection'}
           </Button>
         </CardContent>
       </Card>
@@ -306,10 +303,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-400" />
-              Enhanced Detection Results
+              Strict Detection Results
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review enhanced AI predictions with confidence scores and quality metrics
+              Review high-confidence AI predictions with quality metrics
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -336,7 +333,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               </Button>
             </div>
 
-            {/* Enhanced Metadata Card */}
+            {/* Metadata Card */}
             {results[previewIndex] && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
@@ -356,16 +353,16 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         </Card>
       )}
 
-      {/* Enhanced Statistics */}
+      {/* Statistics */}
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-400" />
-              Enhanced Collection Statistics
+              Collection Statistics
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Advanced trait distribution analysis with confidence metrics
+              Trait distribution analysis with confidence metrics
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -379,9 +376,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                         <div className="flex justify-between items-start mb-1">
                           <div className="text-sm font-medium text-white">{value}</div>
                           <div className="flex items-center gap-1">
-                            {stats.avgConfidence >= 0.8 ? 
+                            {stats.avgConfidence >= 0.85 ? 
                               <CheckCircle className="w-3 h-3 text-green-400" /> : 
-                              stats.avgConfidence >= 0.7 ?
+                              stats.avgConfidence >= 0.78 ?
                               <CheckCircle className="w-3 h-3 text-blue-400" /> :
                               <AlertTriangle className="w-3 h-3 text-yellow-400" />
                             }
@@ -391,7 +388,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                           <div>Count: {stats.count} ({((stats.count / results.length) * 100).toFixed(1)}%)</div>
                           <div>Avg Confidence: {Math.round(stats.avgConfidence * 100)}%</div>
                           <div className="text-xs text-slate-500">
-                            Quality: {stats.avgConfidence >= 0.8 ? 'High' : stats.avgConfidence >= 0.7 ? 'Good' : 'Fair'}
+                            Quality: {stats.avgConfidence >= 0.85 ? 'Excellent' : stats.avgConfidence >= 0.78 ? 'Good' : 'Fair'}
                           </div>
                         </div>
                       </div>
