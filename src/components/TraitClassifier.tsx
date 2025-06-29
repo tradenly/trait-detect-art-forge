@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -5,9 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle, Settings } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { loadAdvancedModels, getEnhancedEmbedding } from '@/utils/advancedEmbeddingUtils';
-import { findBestTraitMatch, analyzeTrainingQuality } from '@/utils/enhancedTraitUtils';
-import { calculateTraitRarity } from '@/utils/traitUtils';
+import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
+import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
 import EditableMetadataCard from './EditableMetadataCard';
 
 interface TraitClassifierProps {
@@ -22,12 +22,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   const [results, setResults] = useState<any[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [currentPhase, setCurrentPhase] = useState<'idle' | 'analyzing' | 'calculating' | 'complete'>('idle');
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
-  const [advancedSettings, setAdvancedSettings] = useState({
-    minConsensus: 0.7,
-    evidenceThreshold: 0.75,
-    useEnsemble: true
-  });
+  const [useAdvancedMode, setUseAdvancedMode] = useState(false);
 
   const canClassify = uploadedImages.length > 0 && Object.keys(trainedTraits).length > 0;
 
@@ -47,37 +42,34 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     const metadataArray: any[] = [];
 
     try {
-      // Load advanced models
-      await loadAdvancedModels();
-      
-      // Enhanced pre-analysis
-      const qualityAnalysis = analyzeTrainingQuality(trainedTraits);
+      // Load standard model (faster and more reliable)
+      await loadModel();
       
       toast({
-        title: "🚀 Advanced AI Analysis Starting",
-        description: `Processing ${uploadedImages.length} images with ensemble detection (Quality: ${Math.round(qualityAnalysis.overallQuality * 100)}%)`
+        title: "🚀 AI Analysis Starting",
+        description: `Processing ${uploadedImages.length} images with enhanced detection`
       });
 
-      console.log('🧠 Advanced AI classification starting');
-      console.log('📊 Training quality:', qualityAnalysis.overallQuality.toFixed(2));
+      console.log('🧠 AI classification starting');
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
         console.log(`🔍 Processing image ${i + 1}/${uploadedImages.length}: ${file.name}`);
         
         const img = await loadImageFromFile(file);
-        const embedding = await getEnhancedEmbedding(img);
+        const processedImg = await preprocessImage(img);
+        const embedding = await getImageEmbedding(processedImg);
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Advanced detection with ensemble methods
+        // Standard detection with proven reliability
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Analyzing ${traitCategory} for ${file.name}`);
-          const result = findBestTraitMatch(embedding, traitValues as any, advancedSettings);
+          const result = findClosestLabel(embedding, traitValues as any);
           
-          if (result && result.label !== 'Not Detected') {
+          if (result && result.label !== 'Not Detected' && result.confidence >= 0.7) {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
             detectionStatus[traitCategory] = 'detected';
@@ -93,31 +85,29 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         // Clean up tensor
         embedding.dispose();
 
-        // Enhanced metadata generation
+        // Create properly formatted attributes array
+        const attributes = Object.entries(detectedTraits)
+          .filter(([_, value]) => value !== 'Not Detected')
+          .map(([trait_type, value]) => ({
+            trait_type,
+            value: value as string,
+            confidence: confidenceScores[trait_type],
+            rarity: "0%" // Will be calculated later
+          }));
+
+        // Enhanced metadata generation with proper structure
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with advanced ensemble detection",
+          description: "AI-generated NFT with enhanced trait detection",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          collectionName: "Advanced AI Trait Collection",
-          collectionDescription: "Generated with Advanced Ensemble AI Detection",
-          processingInfo: {
-            ensembleMethod: "Multi-metric consensus with evidence weighting",
-            qualityScore: qualityAnalysis.overallQuality,
-            detectionSettings: advancedSettings
-          },
-          attributes: Object.entries(detectedTraits)
-            .filter(([_, value]) => value !== 'Not Detected')
-            .map(([trait_type, value]) => ({
-              trait_type,
-              value,
-              confidence: confidenceScores[trait_type],
-              rarity: "0%"
-            })),
+          collectionName: "AI Detected Trait Collection",
+          collectionDescription: "Generated with Enhanced AI Detection",
+          attributes, // This is the key fix - proper attributes array
           allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
-            value: value === 'Not Detected' ? 'Not Detected' : value,
+            value: value === 'Not Detected' ? 'Not Detected' : value as string,
             confidence: confidenceScores[trait_type],
             status: detectionStatus[trait_type],
             rarity: "0%",
@@ -168,14 +158,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       }, 0) / metadataArray.length;
       
       toast({
-        title: "🎉 Advanced Analysis Complete!",
-        description: `${uploadedImages.length} images analyzed with ensemble AI. ${detectedCount} traits detected (avg: ${Math.round(avgConfidence * 100)}% confidence)`
+        title: "🎉 Analysis Complete!",
+        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (avg: ${Math.round(avgConfidence * 100)}% confidence)`
       });
     } catch (error) {
-      console.error('Advanced classification failed:', error);
+      console.error('Classification failed:', error);
       toast({
         title: "Classification failed",
-        description: "Error during advanced trait detection",
+        description: "Error during trait detection",
         variant: "destructive"
       });
       setCurrentPhase('idle');
@@ -230,116 +220,57 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   const getPhaseDescription = () => {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running advanced ensemble AI analysis...';
+        return 'Running enhanced AI analysis...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Advanced analysis complete!';
+        return 'Analysis complete!';
       default:
-        return 'Ready to start advanced analysis';
+        return 'Ready to start analysis';
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Enhanced AI Notice */}
-      <Card className="bg-purple-900/20 border-purple-600">
+      {/* Simplified AI Notice */}
+      <Card className="bg-blue-900/20 border-blue-600">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+            <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-purple-200 font-medium">🚀 Advanced Ensemble AI Detection</h4>
-              <div className="text-sm text-purple-200 space-y-1">
-                <p><strong>Multi-Metric Analysis:</strong> Uses cosine, euclidean, and manhattan distance</p>
-                <p><strong>Consensus Scoring:</strong> Multiple algorithms vote on each detection</p>
-                <p><strong>Evidence Weighting:</strong> Quality and quantity of training data considered</p>
-                <p><strong>Adaptive Thresholds:</strong> Dynamic confidence requirements based on training quality</p>
+              <h4 className="text-blue-200 font-medium">🚀 Enhanced AI Detection</h4>
+              <div className="text-sm text-blue-200 space-y-1">
+                <p><strong>Reliable Detection:</strong> Uses proven AI models for consistent results</p>
+                <p><strong>Quality Focused:</strong> Balanced accuracy and performance</p>
+                <p><strong>Fast Processing:</strong> Optimized for speed and reliability</p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Advanced Settings */}
-      <Card className="bg-slate-700/30 border-slate-600">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-white flex items-center gap-2">
-              <Settings className="w-5 h-5 text-purple-400" />
-              Advanced Detection Settings
-            </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-            >
-              {showAdvancedSettings ? 'Hide' : 'Show'} Settings
-            </Button>
-          </div>
-        </CardHeader>
-        {showAdvancedSettings && (
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-slate-400 block mb-2">Min Consensus ({advancedSettings.minConsensus})</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="0.9"
-                  step="0.05"
-                  value={advancedSettings.minConsensus}
-                  onChange={(e) => setAdvancedSettings({...advancedSettings, minConsensus: parseFloat(e.target.value)})}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-400 block mb-2">Evidence Threshold ({advancedSettings.evidenceThreshold})</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="0.9"
-                  step="0.05"
-                  value={advancedSettings.evidenceThreshold}
-                  onChange={(e) => setAdvancedSettings({...advancedSettings, evidenceThreshold: parseFloat(e.target.value)})}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={advancedSettings.useEnsemble}
-                  onChange={(e) => setAdvancedSettings({...advancedSettings, useEnsemble: e.target.checked})}
-                  className="rounded"
-                />
-                <label className="text-sm text-slate-400">Use Ensemble Detection</label>
-              </div>
-            </div>
-          </CardContent>
-        )}
-      </Card>
-
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-400" />
-            🚀 Advanced Ensemble AI Detection
+            <Sparkles className="w-5 h-5 text-blue-400" />
+            🚀 Enhanced AI Detection
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Multi-algorithm consensus with evidence weighting for maximum accuracy
+            Reliable trait detection with proven AI models for consistent results
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-400">{uploadedImages.length}</div>
+              <div className="text-2xl font-bold text-blue-400">{uploadedImages.length}</div>
               <div className="text-sm text-slate-400">Images to Analyze</div>
             </div>
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-400">{Object.keys(trainedTraits).length}</div>
+              <div className="text-2xl font-bold text-blue-400">{Object.keys(trainedTraits).length}</div>
               <div className="text-sm text-slate-400">Trait Categories</div>
             </div>
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-400">{results.length}</div>
+              <div className="text-2xl font-bold text-blue-400">{results.length}</div>
               <div className="text-sm text-slate-400">Analyzed</div>
             </div>
           </div>
@@ -361,17 +292,17 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Advanced Analysis...' : '🚀 Start Advanced Ensemble Detection'}
+            {classifying ? 'Running Analysis...' : '🚀 Start Enhanced Detection'}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Enhanced Results with Editable Metadata */}
+      {/* Results with Editable Metadata */}
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              <Eye className="w-5 h-5 text-purple-400" />
+              <Eye className="w-5 h-5 text-blue-400" />
               Detection Results with Editable Metadata
             </CardTitle>
             <CardDescription className="text-slate-400">
@@ -427,11 +358,11 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-purple-400" />
+              <BarChart3 className="w-5 h-5 text-blue-400" />
               Collection Statistics
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Trait distribution and confidence analysis from advanced ensemble detection
+              Trait distribution and confidence analysis from enhanced detection
             </CardDescription>
           </CardHeader>
           <CardContent>

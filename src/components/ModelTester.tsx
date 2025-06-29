@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TestTube, Upload, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, ThumbsUp, ThumbsDown, X, Brain } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
+import { loadModel, getImageEmbedding, preprocessImage, validateTrainingQuality } from '@/utils/embeddingUtils';
 import { findClosestLabel, validateDetectionResults, analyzeTrainingData } from '@/utils/traitUtils';
 
 interface TraitResult {
@@ -71,16 +72,9 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
       return;
     }
 
-    // Pre-flight training data analysis
+    // Improved training data analysis
     const trainingAnalysis = analyzeTrainingData(trainedTraits);
-    if (trainingAnalysis.qualityScore < 0.3) {
-      toast({
-        title: "Training Data Quality Warning",
-        description: "Low training quality detected. Results may be inaccurate.",
-        variant: "destructive"
-      });
-    }
-
+    
     setTesting(true);
     setProgress(0);
     const results: TestResult[] = [];
@@ -89,6 +83,9 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     console.log('Training quality score:', trainingAnalysis.qualityScore.toFixed(2));
 
     try {
+      // Use standard model for reliability
+      await loadModel();
+      
       for (let i = 0; i < testImages.length; i++) {
         const file = testImages[i];
         console.log(`Testing image ${i + 1}/${testImages.length}: ${file.name}`);
@@ -99,17 +96,12 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         
         const imageResults: { [category: string]: TraitResult } = {};
         
-        // Enhanced testing with adaptive thresholds
+        // Standard testing with proven reliability
         for (const [category, categoryTraits] of Object.entries(trainedTraits)) {
           console.log(`Testing category: ${category}`);
           const result = findClosestLabel(embedding, categoryTraits as any);
           
-          // Use adaptive threshold based on training quality
-          const baseThreshold = 0.75;
-          const qualityAdjustment = trainingAnalysis.qualityScore > 0.7 ? 0.05 : -0.05;
-          const adaptiveThreshold = baseThreshold + qualityAdjustment;
-          
-          if (result && result.confidence >= adaptiveThreshold) {
+          if (result && result.confidence >= 0.7) {
             imageResults[category] = {
               label: result.label,
               confidence: result.confidence,
@@ -122,7 +114,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
               confidence: result?.confidence || 0,
               avgSimilarity: result?.avgSimilarity || 0
             };
-            console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0} < ${adaptiveThreshold.toFixed(3)})`);
+            console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0} < 0.700)`);
           }
         }
         
@@ -203,14 +195,44 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     });
   };
 
-  const getEnhancedStats = () => {
+  const getTrainingQuality = () => {
     if (Object.keys(trainedTraits).length === 0) return null;
     
     const analysis = analyzeTrainingData(trainedTraits);
+    
+    // Improved quality calculation
+    let totalExamples = 0;
+    let totalCategories = 0;
+    let wellTrainedCategories = 0;
+    
+    Object.entries(trainedTraits).forEach(([category, values]) => {
+      totalCategories++;
+      let categoryExamples = 0;
+      let adequateValues = 0;
+      
+      Object.entries(values as any).forEach(([value, examples]) => {
+        const exampleCount = (examples as any[]).length;
+        categoryExamples += exampleCount;
+        totalExamples += exampleCount;
+        
+        if (exampleCount >= 3) {
+          adequateValues++;
+        }
+      });
+      
+      const valueCount = Object.keys(values as any).length;
+      if (adequateValues >= valueCount * 0.75 && categoryExamples >= 8) {
+        wellTrainedCategories++;
+      }
+    });
+    
+    const qualityScore = wellTrainedCategories / totalCategories;
+    
     return {
-      totalExamples: analysis.totalExamples,
-      qualityScore: analysis.qualityScore,
-      categories: Object.keys(trainedTraits).length,
+      totalExamples,
+      qualityScore,
+      categories: totalCategories,
+      wellTrainedCategories,
       recommendations: analysis.recommendations
     };
   };
@@ -227,24 +249,25 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
   };
 
   const currentResult = testResults[currentTestIndex];
-  const enhancedStats = getEnhancedStats();
+  const trainingQuality = getTrainingQuality();
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Training Quality Indicator */}
-      {enhancedStats && (
-        <Card className={`${enhancedStats.qualityScore >= 0.7 ? 'bg-green-900/20 border-green-600' : enhancedStats.qualityScore >= 0.4 ? 'bg-yellow-900/20 border-yellow-600' : 'bg-red-900/20 border-red-600'}`}>
+      {/* Improved Training Quality Indicator */}
+      {trainingQuality && (
+        <Card className={`${trainingQuality.qualityScore >= 0.7 ? 'bg-green-900/20 border-green-600' : trainingQuality.qualityScore >= 0.5 ? 'bg-yellow-900/20 border-yellow-600' : 'bg-red-900/20 border-red-600'}`}>
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
-              <Brain className={`w-5 h-5 ${enhancedStats.qualityScore >= 0.7 ? 'text-green-400' : enhancedStats.qualityScore >= 0.4 ? 'text-yellow-400' : 'text-red-400'} mt-0.5 flex-shrink-0`} />
+              <Brain className={`w-5 h-5 ${trainingQuality.qualityScore >= 0.7 ? 'text-green-400' : trainingQuality.qualityScore >= 0.5 ? 'text-yellow-400' : 'text-red-400'} mt-0.5 flex-shrink-0`} />
               <div className="space-y-2">
-                <h4 className={`font-medium ${enhancedStats.qualityScore >= 0.7 ? 'text-green-200' : enhancedStats.qualityScore >= 0.4 ? 'text-yellow-200' : 'text-red-200'}`}>
-                  Training Quality: {Math.round(enhancedStats.qualityScore * 100)}%
+                <h4 className={`font-medium ${trainingQuality.qualityScore >= 0.7 ? 'text-green-200' : trainingQuality.qualityScore >= 0.5 ? 'text-yellow-200' : 'text-red-200'}`}>
+                  Training Quality: {Math.round(trainingQuality.qualityScore * 100)}%
                 </h4>
                 <div className="text-sm space-y-1">
-                  <p>{enhancedStats.totalExamples} total examples across {enhancedStats.categories} categories</p>
-                  {enhancedStats.recommendations.length > 0 && (
-                    <p className="text-xs opacity-90">{enhancedStats.recommendations[0]}</p>
+                  <p>{trainingQuality.totalExamples} total examples across {trainingQuality.categories} categories</p>
+                  <p>{trainingQuality.wellTrainedCategories}/{trainingQuality.categories} categories well-trained</p>
+                  {trainingQuality.recommendations.length > 0 && (
+                    <p className="text-xs opacity-90">{trainingQuality.recommendations[0]}</p>
                   )}
                 </div>
               </div>
@@ -258,7 +281,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         <div className="flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-yellow-200">
-            <strong>Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 80%). Green percentages show <strong>DETECTED</strong> traits with high confidence. This ensures more accurate results.
+            <strong>Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 70%). Green percentages show <strong>DETECTED</strong> traits with high confidence.
           </div>
         </div>
       </div>
@@ -271,7 +294,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
             Enhanced AI Model Testing
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Test with adaptive thresholds and comprehensive analysis for maximum accuracy
+            Test with reliable detection algorithms for accurate results
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -331,7 +354,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         </CardContent>
       </Card>
 
-      {/* Test Results */}
+      {/* Test Results with Full Trait Display */}
       {testResults.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
@@ -387,8 +410,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                   
                   <div className="space-y-3">
                     {Object.entries(currentResult.results).map(([category, result]) => {
-                      const isDetected = result.confidence >= 0.8 && result.label !== 'Not Detected';
-                      const displayText = isDetected ? `${category}: ${result.label}` : `${category}: Not Detected`;
+                      const isDetected = result.confidence >= 0.7 && result.label !== 'Not Detected';
                       
                       return (
                         <div key={category} className="bg-slate-800/50 rounded-lg p-4">
@@ -409,7 +431,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                                 variant={getConfidenceBadgeVariant(result.confidence, isDetected)}
                                 className={`${isDetected ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}
                               >
-                                {displayText}
+                                {isDetected ? `${category}: ${result.label}` : `${category}: Not Detected`}
                               </Badge>
                               <span className={`text-sm font-mono ${getConfidenceColor(result.confidence, isDetected)}`}>
                                 {Math.round(result.confidence * 100)}%
@@ -418,7 +440,8 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                             
                             {isDetected && (
                               <div className="text-xs text-slate-400 mt-1">
-                                Detected Value: <span className="text-white font-medium">{result.label}</span>
+                                <div>Detected Value: <span className="text-white font-medium">{result.label}</span></div>
+                                <div>Full Trait: <span className="text-blue-300 font-medium">{category}: {result.label}</span></div>
                               </div>
                             )}
                             

@@ -1,3 +1,4 @@
+
 import { cosineSimilarity } from './embeddingUtils';
 import * as tf from '@tensorflow/tfjs';
 
@@ -40,18 +41,27 @@ export function findClosestLabel(
       similarities.push(similarity);
     }
     
-    // Use weighted average (give more weight to higher similarities)
+    // Improved weighted average - prioritize consistent high scores
     const sortedSims = similarities.sort((a, b) => b - a);
-    const weights = sortedSims.map((_, i) => Math.pow(0.8, i)); // Exponential decay
+    
+    // Calculate weighted average with exponential decay
+    const weights = sortedSims.map((_, i) => Math.pow(0.85, i));
     const weightSum = weights.reduce((sum, w) => sum + w, 0);
     const weightedAvg = sortedSims.reduce((sum, sim, i) => sum + sim * weights[i], 0) / weightSum;
     
+    // Consistency bonus - reward labels with consistently high scores
+    const avgSim = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
+    const variance = similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length;
+    const consistencyBonus = Math.max(0, (1 - Math.sqrt(variance)) * 0.1);
+    
+    const finalScore = Math.min(1, weightedAvg + consistencyBonus);
+    
     allScores[label] = similarities;
     
-    console.log(`Label "${label}": weighted avg = ${weightedAvg.toFixed(3)}, samples = ${similarities.length}`);
+    console.log(`Label "${label}": weighted avg = ${weightedAvg.toFixed(3)}, consistency = ${consistencyBonus.toFixed(3)}, final = ${finalScore.toFixed(3)}, samples = ${similarities.length}`);
     
-    if (weightedAvg > bestAvgSimilarity) {
-      bestAvgSimilarity = weightedAvg;
+    if (finalScore > bestAvgSimilarity) {
+      bestAvgSimilarity = finalScore;
       bestMatch = label;
       bestIndividualScores = similarities;
     }
@@ -61,13 +71,29 @@ export function findClosestLabel(
     return null;
   }
   
-  // Dynamic threshold based on training data quality
+  // Improved dynamic threshold based on training data quality
   const minSamples = Math.min(...Object.values(labelEmbeddings).map(ex => ex.length));
-  const baseThreshold = 0.75;
-  const qualityAdjustment = minSamples >= 5 ? 0.05 : (minSamples >= 3 ? 0.0 : -0.05);
-  const dynamicThreshold = baseThreshold + qualityAdjustment;
+  const maxSamples = Math.max(...Object.values(labelEmbeddings).map(ex => ex.length));
   
-  console.log(`Dynamic threshold: ${dynamicThreshold.toFixed(3)} (base: ${baseThreshold}, adjustment: ${qualityAdjustment})`);
+  // Base threshold adjusted for training quality
+  let baseThreshold = 0.75;
+  
+  // Adjust threshold based on sample count
+  if (minSamples >= 5) {
+    baseThreshold -= 0.05; // Lower threshold for well-trained models
+  } else if (minSamples < 3) {
+    baseThreshold += 0.05; // Higher threshold for poorly trained models
+  }
+  
+  // Adjust for sample balance
+  const sampleBalance = minSamples / maxSamples;
+  if (sampleBalance < 0.5) {
+    baseThreshold += 0.02; // Slightly higher threshold for unbalanced data
+  }
+  
+  const dynamicThreshold = Math.max(0.65, Math.min(0.85, baseThreshold));
+  
+  console.log(`Dynamic threshold: ${dynamicThreshold.toFixed(3)} (base: ${baseThreshold.toFixed(3)}, min samples: ${minSamples}, balance: ${sampleBalance.toFixed(2)})`);
   
   if (bestAvgSimilarity > dynamicThreshold) {
     // Enhanced confidence calculation
@@ -75,11 +101,15 @@ export function findClosestLabel(
       .map(scores => scores.reduce((sum, sim) => sum + sim, 0) / scores.length)
       .sort((a, b) => b - a);
     
-    const confidence = sortedScores.length > 1 
-      ? Math.min(1, bestAvgSimilarity / Math.max(sortedScores[1], 0.1))
-      : bestAvgSimilarity;
+    // Confidence based on margin above second-best and consistency
+    let confidence = bestAvgSimilarity;
     
-    // Boost confidence for very consistent predictions
+    if (sortedScores.length > 1) {
+      const margin = bestAvgSimilarity - sortedScores[1];
+      confidence = Math.min(1, bestAvgSimilarity + margin * 0.5);
+    }
+    
+    // Consistency boost
     const consistencyBoost = bestIndividualScores.length > 1 
       ? 1 - (Math.max(...bestIndividualScores) - Math.min(...bestIndividualScores))
       : 0;
