@@ -1,5 +1,4 @@
-
-import { cosineSimilarity } from './embeddingUtils';
+import { enhancedDetector } from './enhancedDetection';
 import * as tf from '@tensorflow/tfjs';
 
 interface TrainingExample {
@@ -17,20 +16,41 @@ interface DetectionResult {
 
 export function findClosestLabel(
   targetEmbedding: tf.Tensor, 
-  labelEmbeddings: { [key: string]: TrainingExample[] }
+  labelEmbeddings: { [key: string]: TrainingExample[] },
+  category?: string
 ): DetectionResult | null {
   if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
     return null;
   }
   
+  // Use enhanced detection if category is provided
+  if (category) {
+    const enhancedResult = enhancedDetector.enhancedDetection(targetEmbedding, labelEmbeddings, category);
+    
+    if (enhancedResult) {
+      return {
+        label: enhancedResult.label,
+        confidence: enhancedResult.confidence,
+        avgSimilarity: enhancedResult.similarity,
+        individualScores: [enhancedResult.qualityScore]
+      };
+    }
+  }
+  
+  // Fallback to basic detection
+  return basicDetection(targetEmbedding, labelEmbeddings);
+}
+
+function basicDetection(
+  targetEmbedding: tf.Tensor, 
+  labelEmbeddings: { [key: string]: TrainingExample[] }
+): DetectionResult | null {
   let bestMatch = null;
   let bestAvgSimilarity = -1;
   let bestIndividualScores: number[] = [];
-  const allScores: { [key: string]: number[] } = {};
   
-  console.log('Enhanced trait detection for labels:', Object.keys(labelEmbeddings));
+  console.log('Basic trait detection for labels:', Object.keys(labelEmbeddings));
   
-  // Calculate similarity against all examples for each label
   for (const [label, examples] of Object.entries(labelEmbeddings)) {
     if (examples.length === 0) continue;
     
@@ -41,27 +61,16 @@ export function findClosestLabel(
       similarities.push(similarity);
     }
     
-    // Improved weighted average - prioritize consistent high scores
-    const sortedSims = similarities.sort((a, b) => b - a);
-    
-    // Calculate weighted average with exponential decay
-    const weights = sortedSims.map((_, i) => Math.pow(0.85, i));
-    const weightSum = weights.reduce((sum, w) => sum + w, 0);
-    const weightedAvg = sortedSims.reduce((sum, sim, i) => sum + sim * weights[i], 0) / weightSum;
-    
-    // Consistency bonus - reward labels with consistently high scores
     const avgSim = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
-    const variance = similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length;
-    const consistencyBonus = Math.max(0, (1 - Math.sqrt(variance)) * 0.1);
+    const maxSim = Math.max(...similarities);
     
-    const finalScore = Math.min(1, weightedAvg + consistencyBonus);
+    // Use max similarity as primary metric with average as secondary
+    const compositeScore = maxSim * 0.7 + avgSim * 0.3;
     
-    allScores[label] = similarities;
+    console.log(`Label "${label}": avg = ${avgSim.toFixed(3)}, max = ${maxSim.toFixed(3)}, composite = ${compositeScore.toFixed(3)}`);
     
-    console.log(`Label "${label}": weighted avg = ${weightedAvg.toFixed(3)}, consistency = ${consistencyBonus.toFixed(3)}, final = ${finalScore.toFixed(3)}, samples = ${similarities.length}`);
-    
-    if (finalScore > bestAvgSimilarity) {
-      bestAvgSimilarity = finalScore;
+    if (compositeScore > bestAvgSimilarity) {
+      bestAvgSimilarity = compositeScore;
       bestMatch = label;
       bestIndividualScores = similarities;
     }
@@ -71,68 +80,64 @@ export function findClosestLabel(
     return null;
   }
   
-  // Improved dynamic threshold based on training data quality
-  const minSamples = Math.min(...Object.values(labelEmbeddings).map(ex => ex.length));
-  const maxSamples = Math.max(...Object.values(labelEmbeddings).map(ex => ex.length));
+  const threshold = 0.72; // Slightly lower threshold for basic detection
   
-  // Base threshold adjusted for training quality
-  let baseThreshold = 0.75;
-  
-  // Adjust threshold based on sample count
-  if (minSamples >= 5) {
-    baseThreshold -= 0.05; // Lower threshold for well-trained models
-  } else if (minSamples < 3) {
-    baseThreshold += 0.05; // Higher threshold for poorly trained models
-  }
-  
-  // Adjust for sample balance
-  const sampleBalance = minSamples / maxSamples;
-  if (sampleBalance < 0.5) {
-    baseThreshold += 0.02; // Slightly higher threshold for unbalanced data
-  }
-  
-  const dynamicThreshold = Math.max(0.65, Math.min(0.85, baseThreshold));
-  
-  console.log(`Dynamic threshold: ${dynamicThreshold.toFixed(3)} (base: ${baseThreshold.toFixed(3)}, min samples: ${minSamples}, balance: ${sampleBalance.toFixed(2)})`);
-  
-  if (bestAvgSimilarity > dynamicThreshold) {
-    // Enhanced confidence calculation
-    const sortedScores = Object.values(allScores)
-      .map(scores => scores.reduce((sum, sim) => sum + sim, 0) / scores.length)
-      .sort((a, b) => b - a);
-    
-    // Confidence based on margin above second-best and consistency
-    let confidence = bestAvgSimilarity;
-    
-    if (sortedScores.length > 1) {
-      const margin = bestAvgSimilarity - sortedScores[1];
-      confidence = Math.min(1, bestAvgSimilarity + margin * 0.5);
-    }
-    
-    // Consistency boost
-    const consistencyBoost = bestIndividualScores.length > 1 
-      ? 1 - (Math.max(...bestIndividualScores) - Math.min(...bestIndividualScores))
-      : 0;
-    
-    const finalConfidence = Math.min(1, confidence + consistencyBoost * 0.1);
-    
-    console.log(`✅ Match: "${bestMatch}" confidence: ${finalConfidence.toFixed(3)}, consistency: ${consistencyBoost.toFixed(3)}`);
+  if (bestAvgSimilarity > threshold) {
+    console.log(`✅ Match: "${bestMatch}" confidence: ${bestAvgSimilarity.toFixed(3)}`);
     
     return {
       label: bestMatch,
-      confidence: finalConfidence,
+      confidence: bestAvgSimilarity,
       avgSimilarity: bestAvgSimilarity,
       individualScores: bestIndividualScores
     };
   }
   
-  console.log(`❌ No confident match. Best: ${bestAvgSimilarity.toFixed(3)} < ${dynamicThreshold.toFixed(3)}`);
+  console.log(`❌ No confident match. Best: ${bestAvgSimilarity.toFixed(3)} < ${threshold.toFixed(3)}`);
   return {
     label: 'Not Detected',
     confidence: bestAvgSimilarity,
     avgSimilarity: bestAvgSimilarity,
     individualScores: bestIndividualScores
   };
+}
+
+function cosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
+  if (!a || !b) {
+    console.warn('Null tensor provided to cosineSimilarity');
+    return 0;
+  }
+  
+  const aFlat = a.flatten();
+  const bFlat = b.flatten();
+  
+  if (aFlat.shape[0] !== bFlat.shape[0]) {
+    console.warn('Tensor shape mismatch:', aFlat.shape, bFlat.shape);
+    aFlat.dispose();
+    bFlat.dispose();
+    return 0;
+  }
+  
+  const dotProduct = tf.sum(tf.mul(aFlat, bFlat));
+  const normA = tf.norm(aFlat);
+  const normB = tf.norm(bFlat);
+  
+  const epsilon = 1e-8;
+  const similarity = tf.div(
+    dotProduct, 
+    tf.maximum(tf.mul(normA, normB), epsilon)
+  );
+  
+  const result = similarity.dataSync()[0];
+  
+  dotProduct.dispose();
+  normA.dispose();
+  normB.dispose();
+  similarity.dispose();
+  aFlat.dispose();
+  bFlat.dispose();
+  
+  return isNaN(result) ? 0 : Math.max(0, Math.min(1, result));
 }
 
 // Enhanced conflict resolution
@@ -219,7 +224,6 @@ export function validateDetectionResults(results: any[]): {
   const confidenceScores: number[] = [];
   
   results.forEach(result => {
-    // Analyze confidence distribution
     Object.values(result.confidenceScores || {}).forEach((confidence: any) => {
       totalConfidence += confidence;
       totalPredictions++;
@@ -233,37 +237,29 @@ export function validateDetectionResults(results: any[]): {
       
       totalPossibleTraits++;
     });
-    
-    // Check for conflicting traits
-    const hasConflicts = checkForConflicts(result.attributes || []);
-    if (hasConflicts.length > 0) {
-      recommendations.push(`Conflicting traits detected: ${hasConflicts.join(', ')}. Review training data.`);
-    }
   });
   
   const accuracy = totalPredictions > 0 ? totalConfidence / totalPredictions : 0;
   const detectionRate = totalPossibleTraits > 0 ? detectedTraits / totalPossibleTraits : 0;
   
-  // Calculate consistency score
   const avgConfidence = confidenceScores.reduce((sum, conf) => sum + conf, 0) / confidenceScores.length;
   const variance = confidenceScores.reduce((sum, conf) => sum + Math.pow(conf - avgConfidence, 2), 0) / confidenceScores.length;
   const consistencyScore = Math.max(0, 1 - Math.sqrt(variance));
   
-  // Generate recommendations
   if (accuracy < 0.75) {
     recommendations.push('Overall accuracy is low. Add more diverse training examples.');
   }
   
   if (detectionRate < 0.6) {
-    recommendations.push('Low detection rate. Consider lowering confidence thresholds or improving training data.');
+    recommendations.push('Low detection rate. Consider using the Training Manager to add more examples.');
   }
   
   if (consistencyScore < 0.7) {
-    recommendations.push('Inconsistent predictions. Ensure training examples are high quality and representative.');
+    recommendations.push('Inconsistent predictions. Review training data quality using Training Manager.');
   }
   
   if (lowConfidenceCount > totalPredictions * 0.4) {
-    recommendations.push('Many low-confidence predictions. Review training data quality and add more examples.');
+    recommendations.push('Many low-confidence predictions. Add more high-quality training examples.');
   }
   
   return {
@@ -293,9 +289,10 @@ export function analyzeTrainingData(trainedTraits: any): {
   recommendations: string[];
   qualityScore: number;
 } {
+  const analysis = enhancedDetector.analyzeTrainingQuality(trainedTraits);
+  
   let totalExamples = 0;
   const categoryCounts: { [key: string]: number } = {};
-  const recommendations: string[] = [];
   
   Object.entries(trainedTraits).forEach(([category, values]: [string, any]) => {
     let categoryTotal = 0;
@@ -303,27 +300,14 @@ export function analyzeTrainingData(trainedTraits: any): {
       const count = examples.length;
       categoryTotal += count;
       totalExamples += count;
-      
-      if (count < 3) {
-        recommendations.push(`${category} → ${value}: needs more examples (${count}/3 minimum)`);
-      }
     });
     categoryCounts[category] = categoryTotal;
   });
   
-  // Calculate quality score
-  const categories = Object.keys(trainedTraits);
-  const avgExamplesPerCategory = totalExamples / categories.length;
-  const qualityScore = Math.min(1, avgExamplesPerCategory / 15); // Optimal is ~15 examples per category
-  
-  if (qualityScore < 0.5) {
-    recommendations.push('Overall training data is insufficient. Add more examples across all categories.');
-  }
-  
   return {
     totalExamples,
     categoryCounts,
-    recommendations,
-    qualityScore
+    recommendations: analysis.recommendations,
+    qualityScore: analysis.overallQuality
   };
 }

@@ -1,13 +1,12 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle, Settings } from 'lucide-react';
+import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { findClosestLabel, calculateTraitRarity } from '@/utils/traitUtils';
+import { findClosestLabel, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
 import EditableMetadataCard from './EditableMetadataCard';
 
 interface TraitClassifierProps {
@@ -22,7 +21,6 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   const [results, setResults] = useState<any[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [currentPhase, setCurrentPhase] = useState<'idle' | 'analyzing' | 'calculating' | 'complete'>('idle');
-  const [useAdvancedMode, setUseAdvancedMode] = useState(false);
 
   const canClassify = uploadedImages.length > 0 && Object.keys(trainedTraits).length > 0;
 
@@ -42,15 +40,18 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     const metadataArray: any[] = [];
 
     try {
-      // Load standard model (faster and more reliable)
       await loadModel();
       
+      // Analyze training quality
+      const trainingAnalysis = analyzeTrainingData(trainedTraits);
+      
       toast({
-        title: "🚀 AI Analysis Starting",
-        description: `Processing ${uploadedImages.length} images with enhanced detection`
+        title: "🚀 Enhanced AI Analysis Starting",
+        description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality`
       });
 
-      console.log('🧠 AI classification starting');
+      console.log('🧠 Enhanced AI classification starting');
+      console.log('📊 Training quality:', trainingAnalysis.qualityScore.toFixed(2));
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
@@ -64,12 +65,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Standard detection with proven reliability
+        // Enhanced detection with category-specific optimization
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Analyzing ${traitCategory} for ${file.name}`);
-          const result = findClosestLabel(embedding, traitValues as any);
           
-          if (result && result.label !== 'Not Detected' && result.confidence >= 0.7) {
+          // Use enhanced detection with category context
+          const result = findClosestLabel(embedding, traitValues as any, traitCategory);
+          
+          if (result && result.label !== 'Not Detected' && result.confidence >= 0.72) {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
             detectionStatus[traitCategory] = 'detected';
@@ -82,7 +85,6 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           }
         }
 
-        // Clean up tensor
         embedding.dispose();
 
         // Create properly formatted attributes array
@@ -95,7 +97,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             rarity: "0%" // Will be calculated later
           }));
 
-        // Enhanced metadata generation with proper structure
+        // Enhanced metadata generation
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
           description: "AI-generated NFT with enhanced trait detection",
@@ -104,7 +106,8 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           imageUrl: URL.createObjectURL(file),
           collectionName: "AI Detected Trait Collection",
           collectionDescription: "Generated with Enhanced AI Detection",
-          attributes, // This is the key fix - proper attributes array
+          attributes,
+          confidenceScores, // Add confidence scores for metadata
           allTraitAnalysis: Object.entries(detectedTraits).map(([trait_type, value]) => ({
             trait_type,
             value: value === 'Not Detected' ? 'Not Detected' : value as string,
@@ -158,14 +161,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       }, 0) / metadataArray.length;
       
       toast({
-        title: "🎉 Analysis Complete!",
+        title: "🎉 Enhanced Analysis Complete!",
         description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (avg: ${Math.round(avgConfidence * 100)}% confidence)`
       });
     } catch (error) {
-      console.error('Classification failed:', error);
+      console.error('Enhanced classification failed:', error);
       toast({
         title: "Classification failed",
-        description: "Error during trait detection",
+        description: "Error during enhanced trait detection",
         variant: "destructive"
       });
       setCurrentPhase('idle');
@@ -190,7 +193,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     onMetadataGenerated(updatedResults);
   };
 
-  const getTraitStats = () => {
+  function getTraitStats() {
     if (results.length === 0) return {};
     
     const stats: any = {};
@@ -215,34 +218,34 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     });
     
     return stats;
-  };
+  }
 
-  const getPhaseDescription = () => {
+  function getPhaseDescription() {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running enhanced AI analysis...';
+        return 'Running enhanced AI analysis with adaptive thresholds...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Analysis complete!';
+        return 'Enhanced analysis complete!';
       default:
-        return 'Ready to start analysis';
+        return 'Ready to start enhanced analysis';
     }
-  };
+  }
 
   return (
     <div className="space-y-6">
-      {/* Simplified AI Notice */}
+      {/* Enhanced AI Notice */}
       <Card className="bg-blue-900/20 border-blue-600">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-blue-200 font-medium">🚀 Enhanced AI Detection</h4>
+              <h4 className="text-blue-200 font-medium">🚀 Enhanced AI Detection System</h4>
               <div className="text-sm text-blue-200 space-y-1">
-                <p><strong>Reliable Detection:</strong> Uses proven AI models for consistent results</p>
-                <p><strong>Quality Focused:</strong> Balanced accuracy and performance</p>
-                <p><strong>Fast Processing:</strong> Optimized for speed and reliability</p>
+                <p><strong>Adaptive Thresholds:</strong> Automatically adjusts based on training quality</p>
+                <p><strong>Multi-Factor Scoring:</strong> Uses advanced similarity calculations</p>
+                <p><strong>Quality Focused:</strong> Optimized for accuracy over speed</p>
               </div>
             </div>
           </div>
@@ -256,7 +259,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             🚀 Enhanced AI Detection
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Reliable trait detection with proven AI models for consistent results
+            Advanced trait detection with adaptive thresholds and quality optimization
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -292,7 +295,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Analysis...' : '🚀 Start Enhanced Detection'}
+            {classifying ? 'Running Enhanced Analysis...' : '🚀 Start Enhanced Detection'}
           </Button>
         </CardContent>
       </Card>
@@ -303,10 +306,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-400" />
-              Detection Results with Editable Metadata
+              Enhanced Detection Results
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review and edit AI predictions. Click "Edit" to modify any metadata manually.
+              Review enhanced AI predictions with confidence scores and quality metrics
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -333,7 +336,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
               </Button>
             </div>
 
-            {/* Editable Metadata Card */}
+            {/* Enhanced Metadata Card */}
             {results[previewIndex] && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
@@ -353,16 +356,16 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         </Card>
       )}
 
-      {/* Trait Statistics */}
+      {/* Enhanced Statistics */}
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-400" />
-              Collection Statistics
+              Enhanced Collection Statistics
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Trait distribution and confidence analysis from enhanced detection
+              Advanced trait distribution analysis with confidence metrics
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -376,8 +379,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                         <div className="flex justify-between items-start mb-1">
                           <div className="text-sm font-medium text-white">{value}</div>
                           <div className="flex items-center gap-1">
-                            {stats.avgConfidence >= 0.7 ? 
+                            {stats.avgConfidence >= 0.8 ? 
                               <CheckCircle className="w-3 h-3 text-green-400" /> : 
+                              stats.avgConfidence >= 0.7 ?
+                              <CheckCircle className="w-3 h-3 text-blue-400" /> :
                               <AlertTriangle className="w-3 h-3 text-yellow-400" />
                             }
                           </div>
@@ -385,6 +390,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                         <div className="text-xs text-slate-400 space-y-1">
                           <div>Count: {stats.count} ({((stats.count / results.length) * 100).toFixed(1)}%)</div>
                           <div>Avg Confidence: {Math.round(stats.avgConfidence * 100)}%</div>
+                          <div className="text-xs text-slate-500">
+                            Quality: {stats.avgConfidence >= 0.8 ? 'High' : stats.avgConfidence >= 0.7 ? 'Good' : 'Fair'}
+                          </div>
                         </div>
                       </div>
                     ))}
