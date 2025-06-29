@@ -410,33 +410,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
       )}
     </div>
   );
-
-  function getTotalTrainingExamples() {
-    let total = 0;
-    Object.values(trainedTraits).forEach((category) => {
-      Object.values(category).forEach((examples) => {
-        total += examples.length;
-      });
-    });
-    return total;
-  }
-
-  function getTrainingQualityIndicator(examples: TrainingExample[]) {
-    const validation = validateTrainingQuality(examples);
-    if (validation.isValid && examples.length >= 5) {
-      return <CheckCircle className="w-4 h-4 text-green-400" />;
-    } else if (validation.isValid) {
-      return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
-    }
-    return <X className="w-4 h-4 text-red-400" />;
-  }
-
-  function getQualityMessage(examples: TrainingExample[]) {
-    if (examples.length >= 8) return "Excellent (8+ examples)";
-    if (examples.length >= 5) return "Good (5+ examples)";
-    if (examples.length >= 3) return "Minimum (3+ examples)";
-    return "Insufficient (<3 examples)";
-  }
 };
 
 export default TraitTrainer;
