@@ -142,16 +142,18 @@ const Index = () => {
               <CardContent>
                 <ModelTester 
                   trainedTraits={trainedTraits}
-                  onTestCompleted={() => setModelTested(true)}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <Button 
-                    onClick={nextStep}
-                    disabled={!canProceedToUpload}
+                    onClick={() => {
+                      setModelTested(true);
+                      nextStep();
+                    }}
+                    disabled={!canProceedToTest}
                     className="w-full"
                     size="lg"
                   >
-                    {canProceedToUpload ? 'Continue to Collection Upload' : 'Complete Testing First'}
+                    Continue to Collection Upload
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
