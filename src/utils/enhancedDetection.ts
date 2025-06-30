@@ -27,15 +27,15 @@ interface FeedbackCorrection {
 export class EnhancedDetector {
   private adaptiveThresholds: Map<string, number> = new Map();
   private categoryStats: Map<string, { avgSimilarity: number; variance: number }> = new Map();
-  private feedbackCorrections: Map<string, FeedbackCorrection[]> = new Map(); // Store corrections by category
+  private feedbackCorrections: Map<string, FeedbackCorrection[]> = new Map();
 
   constructor() {
     this.initializeAdaptiveThresholds();
   }
 
   private initializeAdaptiveThresholds() {
-    // Initialize with much stricter thresholds
-    this.adaptiveThresholds.set('default', 0.80);
+    // Initialize with balanced thresholds for better feedback integration
+    this.adaptiveThresholds.set('default', 0.75);
   }
 
   public analyzeTrainingQuality(labelEmbeddings: { [key: string]: TrainingExample[] }): {
@@ -70,10 +70,10 @@ export class EnhancedDetector {
       const variance = similarities.length > 1 ? 
         similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length : 0;
 
-      // Stricter quality requirements
-      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 2));
-      const sampleScore = Math.min(1, examples.length / 8);
-      const quality = (consistencyScore * 0.8 + sampleScore * 0.2); // Prioritize consistency more
+      // Balanced quality scoring that works well with feedback
+      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 1.5));
+      const sampleScore = Math.min(1, examples.length / 6);
+      const quality = (consistencyScore * 0.7 + sampleScore * 0.3);
 
       categoryQuality.set(category, quality);
       this.categoryStats.set(category, { avgSimilarity: avgSim, variance: variance });
@@ -81,15 +81,15 @@ export class EnhancedDetector {
       totalQuality += quality;
       categoryCount++;
 
-      // More specific recommendations
+      // Practical recommendations
       if (examples.length < 3) {
-        recommendations.push(`${category}: Critical - Add more examples (${examples.length}/3 minimum)`);
+        recommendations.push(`${category}: Add more examples (${examples.length}/3 minimum)`);
       } else if (examples.length < 5) {
         recommendations.push(`${category}: Add more examples for better accuracy (${examples.length}/5 recommended)`);
       }
 
-      if (variance > 0.15) { // Stricter variance threshold
-        recommendations.push(`${category}: Training examples are too inconsistent - review image quality`);
+      if (variance > 0.2) {
+        recommendations.push(`${category}: Training examples are inconsistent - review image quality`);
       }
       
       if (avgSim > 0.95) {
@@ -112,25 +112,25 @@ export class EnhancedDetector {
     const stats = this.categoryStats.get(category);
     if (!stats) return;
 
-    // Much more conservative threshold adjustment
-    let threshold = 0.80; // Higher base threshold
+    // Balanced threshold adjustment that works with feedback
+    let threshold = 0.75; // Balanced base threshold
 
     // Adjust based on consistency
-    if (stats.variance < 0.05) {
-      threshold -= 0.02; // Small reduction for very consistent data
-    } else if (stats.variance > 0.15) {
-      threshold += 0.05; // Significant increase for inconsistent data
+    if (stats.variance < 0.08) {
+      threshold -= 0.03; // Small reduction for consistent data
+    } else if (stats.variance > 0.2) {
+      threshold += 0.05; // Increase for inconsistent data
     }
 
     // Adjust based on sample size
-    if (examples.length >= 8) {
-      threshold -= 0.01; // Minimal reduction for well-trained categories
-    } else if (examples.length < 4) {
-      threshold += 0.05; // Significant increase for poorly trained categories
+    if (examples.length >= 6) {
+      threshold -= 0.02; // Small reduction for well-trained categories
+    } else if (examples.length < 3) {
+      threshold += 0.05; // Increase for poorly trained categories
     }
 
-    // Clamp threshold to strict range
-    threshold = Math.max(0.75, Math.min(0.88, threshold));
+    // Clamp threshold to reasonable range
+    threshold = Math.max(0.65, Math.min(0.85, threshold));
     
     this.adaptiveThresholds.set(category, threshold);
     console.log(`🎯 Updated adaptive threshold for ${category}: ${threshold.toFixed(3)} (${examples.length} examples, variance: ${stats.variance.toFixed(3)})`);
@@ -161,10 +161,11 @@ export class EnhancedDetector {
       timestamp: Date.now()
     });
 
-    console.log(`📝 Added feedback correction for ${category}: ${wrongLabel} → ${correctLabel} (${fileName})`);
+    console.log(`📝 FEEDBACK STORED: ${category}: ${wrongLabel} → ${correctLabel} (${fileName})`);
+    console.log(`📊 Total corrections for ${category}: ${corrections.length}`);
     
-    // Keep only the last 50 corrections per category to manage memory
-    if (corrections.length > 50) {
+    // Keep only the last 100 corrections per category to manage memory
+    if (corrections.length > 100) {
       const removed = corrections.shift();
       if (removed?.imageEmbedding) {
         removed.imageEmbedding.dispose();
@@ -182,13 +183,14 @@ export class EnhancedDetector {
       return null;
     }
 
-    // First check for feedback corrections
+    // PRIORITY 1: Check for feedback corrections first
     const correctionResult = this.applyFeedbackCorrections(targetEmbedding, category);
     if (correctionResult) {
-      console.log(`✅ FEEDBACK CORRECTION APPLIED: "${correctionResult.label}" for ${category}`);
+      console.log(`✅ FEEDBACK CORRECTION APPLIED: "${correctionResult.label}" for ${category} (confidence: ${correctionResult.confidence.toFixed(3)})`);
       return correctionResult;
     }
 
+    // PRIORITY 2: Standard enhanced detection
     let bestMatch: string | null = null;
     let bestScore = -1;
     let bestSimilarity = -1;
@@ -196,7 +198,6 @@ export class EnhancedDetector {
 
     console.log(`🔍 Enhanced detection for ${category} with ${Object.keys(labelEmbeddings).length} labels`);
 
-    // More conservative similarity calculation
     for (const [label, examples] of Object.entries(labelEmbeddings)) {
       if (examples.length === 0) continue;
 
@@ -209,23 +210,21 @@ export class EnhancedDetector {
 
       const maxSim = Math.max(...similarities);
       const avgSim = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
-      const minSim = Math.min(...similarities);
       
-      // Stricter consistency scoring
+      // Balanced consistency scoring
       const variance = similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length;
-      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 3)); // More penalty for variance
+      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 2));
 
-      // Conservative composite score - require high max similarity AND good consistency
+      // Balanced composite score that works well with feedback
       const compositeScore = (
-        maxSim * 0.6 +         // Higher weight on best match
-        avgSim * 0.2 +         // Lower weight on average
-        consistencyScore * 0.2  // Consistency requirement
+        maxSim * 0.5 +         // Best match importance
+        avgSim * 0.3 +         // Average consistency
+        consistencyScore * 0.2  // Consistency bonus
       );
 
-      console.log(`Label "${label}": max=${maxSim.toFixed(3)}, avg=${avgSim.toFixed(3)}, min=${minSim.toFixed(3)}, consistency=${consistencyScore.toFixed(3)}, composite=${compositeScore.toFixed(3)}`);
+      console.log(`Label "${label}": max=${maxSim.toFixed(3)}, avg=${avgSim.toFixed(3)}, consistency=${consistencyScore.toFixed(3)}, composite=${compositeScore.toFixed(3)}`);
 
-      // Only update best match if significantly better
-      if (compositeScore > bestScore + 0.01) { // Require meaningful improvement
+      if (compositeScore > bestScore) {
         bestScore = compositeScore;
         bestMatch = label;
         bestSimilarity = maxSim;
@@ -238,12 +237,12 @@ export class EnhancedDetector {
       return null;
     }
 
-    // Use much stricter adaptive threshold
-    const threshold = this.adaptiveThresholds.get(category) || this.adaptiveThresholds.get('default') || 0.80;
+    // Use adaptive threshold with feedback consideration
+    const threshold = this.adaptiveThresholds.get(category) || this.adaptiveThresholds.get('default') || 0.75;
     
-    // Additional requirements for acceptance
-    const minConsistency = 0.7; // Require good consistency
-    const minSimilarity = 0.75; // Require high similarity
+    // Additional requirements for acceptance (balanced for feedback integration)
+    const minConsistency = 0.6; 
+    const minSimilarity = 0.70; 
 
     console.log(`🎯 Enhanced result: ${bestMatch}, score: ${bestScore.toFixed(3)}, similarity: ${bestSimilarity.toFixed(3)}, consistency: ${bestConsistency.toFixed(3)}, threshold: ${threshold.toFixed(3)}`);
 
@@ -277,27 +276,32 @@ export class EnhancedDetector {
       return null;
     }
 
+    console.log(`🔍 Checking ${corrections.length} feedback corrections for ${category}`);
+
     let bestMatch: string | null = null;
     let bestSimilarity = -1;
+    let bestFileName = '';
 
     for (const correction of corrections) {
       const similarity = this.enhancedCosineSimilarity(targetEmbedding, correction.imageEmbedding);
       
-      // If this image is very similar to a corrected image, use the correction
-      if (similarity > 0.85 && similarity > bestSimilarity) { // High threshold for corrections
+      // Use balanced threshold for feedback corrections - not too strict, not too loose
+      if (similarity > 0.80 && similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestMatch = correction.correctLabel;
-        console.log(`🎯 Feedback match found: ${correction.fileName} → ${correction.correctLabel} (similarity: ${similarity.toFixed(3)})`);
+        bestFileName = correction.fileName;
+        console.log(`🎯 Strong feedback match found: ${correction.fileName} → ${correction.correctLabel} (similarity: ${similarity.toFixed(3)})`);
       }
     }
 
-    if (bestMatch && bestSimilarity > 0.85) {
+    if (bestMatch && bestSimilarity > 0.80) {
+      console.log(`✅ APPLYING FEEDBACK CORRECTION: ${bestMatch} (similarity: ${bestSimilarity.toFixed(3)}, source: ${bestFileName})`);
       return {
         label: bestMatch,
-        confidence: bestSimilarity,
+        confidence: Math.min(0.95, bestSimilarity + 0.1), // Boost confidence for feedback matches
         similarity: bestSimilarity,
         consistencyScore: 1.0, // High consistency for corrections
-        qualityScore: bestSimilarity
+        qualityScore: bestSimilarity + 0.1
       };
     }
 
@@ -305,7 +309,7 @@ export class EnhancedDetector {
   }
 
   private enhancedCosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
-    // More robust cosine similarity with better numerical stability
+    // Robust cosine similarity with good numerical stability
     const aFlat = a.flatten();
     const bFlat = b.flatten();
     
@@ -316,7 +320,7 @@ export class EnhancedDetector {
       return 0;
     }
     
-    // L2 normalization with larger epsilon for stability
+    // L2 normalization with stability
     const aNorm = tf.norm(aFlat);
     const bNorm = tf.norm(bFlat);
     
@@ -335,7 +339,7 @@ export class EnhancedDetector {
     bUnit.dispose();
     dotProduct.dispose();
     
-    // Clamp to valid range with better bounds checking
+    // Clamp to valid range
     return Math.max(-1, Math.min(1, similarity || 0));
   }
 
@@ -345,13 +349,17 @@ export class EnhancedDetector {
       if (corrections) {
         corrections.forEach(correction => correction.imageEmbedding.dispose());
         this.feedbackCorrections.delete(category);
+        console.log(`🗑️ Cleared ${corrections.length} feedback corrections for ${category}`);
       }
     } else {
       // Clear all corrections
-      this.feedbackCorrections.forEach(corrections => {
+      let totalCleared = 0;
+      this.feedbackCorrections.forEach((corrections, category) => {
         corrections.forEach(correction => correction.imageEmbedding.dispose());
+        totalCleared += corrections.length;
       });
       this.feedbackCorrections.clear();
+      console.log(`🗑️ Cleared all ${totalCleared} feedback corrections`);
     }
   }
 
@@ -361,6 +369,16 @@ export class EnhancedDetector {
       stats[category] = corrections.length;
     });
     return stats;
+  }
+
+  public logFeedbackStatus() {
+    console.log('📊 FEEDBACK SYSTEM STATUS:');
+    const stats = this.getFeedbackStats();
+    const totalCorrections = Object.values(stats).reduce((sum, count) => sum + count, 0);
+    console.log(`📝 Total corrections stored: ${totalCorrections}`);
+    Object.entries(stats).forEach(([category, count]) => {
+      console.log(`   ${category}: ${count} corrections`);
+    });
   }
 }
 
