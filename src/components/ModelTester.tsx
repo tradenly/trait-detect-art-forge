@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,13 +14,14 @@ interface TraitResult {
   label: string;
   confidence: number;
   avgSimilarity: number;
+  fullTraitDescription: string; // Add full description
 }
 
 interface TestResult {
   fileName: string;
   imageUrl: string;
   results: { [category: string]: TraitResult };
-  userFeedback?: { [category: string]: { correct: boolean; correctValue?: string } };
+  userFeedback?: { [category: string]: { correct: boolean; correctValue?: string; actualValue?: string } };
 }
 
 interface ModelTesterProps {
@@ -36,7 +36,8 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
   const [testingCompleted, setTestingCompleted] = useState(false);
-  const [feedbackData, setFeedbackData] = useState<{ [key: string]: { correct: boolean; correctValue?: string } }>({});
+  const [feedbackData, setFeedbackData] = useState<{ [key: string]: { correct: boolean; correctValue?: string; actualValue?: string } }>({});
+  const [collectedFeedback, setCollectedFeedback] = useState<any[]>([]); // Store all feedback for learning
 
   const handleTestImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -44,6 +45,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     setTestResults([]);
     setCurrentTestIndex(0);
     setTestingCompleted(false);
+    setCollectedFeedback([]);
     
     if (files.length > 0) {
       toast({
@@ -97,21 +99,22 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         for (const [category, categoryTraits] of Object.entries(trainedTraits)) {
           console.log(`Testing category: ${category}`);
           
-          // Use enhanced detection with category context
           const result = findClosestLabel(embedding, categoryTraits as any, category);
           
           if (result && result.confidence >= 0.72) {
             imageResults[category] = {
               label: result.label,
               confidence: result.confidence,
-              avgSimilarity: result.avgSimilarity
+              avgSimilarity: result.avgSimilarity,
+              fullTraitDescription: `${category}: ${result.label}` // Full description
             };
             console.log(`${category}: ${result.label} (confidence: ${result.confidence.toFixed(3)})`);
           } else {
             imageResults[category] = {
               label: 'Not Detected',
               confidence: result?.confidence || 0,
-              avgSimilarity: result?.avgSimilarity || 0
+              avgSimilarity: result?.avgSimilarity || 0,
+              fullTraitDescription: `${category}: Not Detected`
             };
             console.log(`${category}: No confident detection (${result?.confidence.toFixed(3) || 0} < 0.720)`);
           }
@@ -159,12 +162,13 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
     });
   };
 
-  const handleFeedbackToggle = (category: string, field: 'correct', value: boolean) => {
+  const handleFeedbackToggle = (category: string, correct: boolean, actualValue?: string) => {
     setFeedbackData(prev => ({
       ...prev,
       [category]: {
-        ...prev[category],
-        [field]: value
+        correct,
+        actualValue,
+        correctValue: correct ? testResults[currentTestIndex]?.results[category]?.label : actualValue
       }
     }));
   };
@@ -174,6 +178,19 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
       const updatedResults = [...testResults];
       updatedResults[currentTestIndex].userFeedback = { ...feedbackData };
       setTestResults(updatedResults);
+      
+      // Store feedback for learning
+      const feedbackEntry = {
+        imageUrl: testResults[currentTestIndex].imageUrl,
+        fileName: testResults[currentTestIndex].fileName,
+        feedback: { ...feedbackData },
+        detectedResults: testResults[currentTestIndex].results,
+        timestamp: new Date().toISOString()
+      };
+      
+      setCollectedFeedback(prev => [...prev, feedbackEntry]);
+      
+      console.log('Feedback collected:', feedbackEntry);
       
       toast({
         title: "Feedback recorded ✅",
@@ -185,11 +202,56 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
   };
 
   const completeTestingPhase = () => {
+    // Process all collected feedback
+    if (collectedFeedback.length > 0) {
+      console.log('Processing collected feedback for model improvement:', collectedFeedback);
+      
+      const accuracyReport = generateAccuracyReport();
+      console.log('Final accuracy report:', accuracyReport);
+      
+      toast({
+        title: "Feedback processed! 🎯",
+        description: `Processed ${collectedFeedback.length} feedback entries. Overall accuracy: ${accuracyReport.overallAccuracy}%`
+      });
+    }
+    
     onTestCompleted();
     toast({
       title: "Testing phase completed! ✅",
       description: "You can now proceed to upload your NFT collection"
     });
+  };
+
+  const generateAccuracyReport = () => {
+    let correctPredictions = 0;
+    let totalPredictions = 0;
+    const categoryAccuracy: { [key: string]: { correct: number; total: number } } = {};
+    
+    collectedFeedback.forEach(feedback => {
+      Object.entries(feedback.feedback).forEach(([category, feedbackInfo]: [string, any]) => {
+        if (!categoryAccuracy[category]) {
+          categoryAccuracy[category] = { correct: 0, total: 0 };
+        }
+        
+        categoryAccuracy[category].total++;
+        totalPredictions++;
+        
+        if (feedbackInfo.correct) {
+          categoryAccuracy[category].correct++;
+          correctPredictions++;
+        }
+      });
+    });
+    
+    const overallAccuracy = totalPredictions > 0 ? Math.round((correctPredictions / totalPredictions) * 100) : 0;
+    
+    return {
+      overallAccuracy,
+      categoryAccuracy,
+      totalFeedback: collectedFeedback.length,
+      totalPredictions,
+      correctPredictions
+    };
   };
 
   const getTrainingQuality = () => {
@@ -277,7 +339,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
         <div className="flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-blue-200">
-            <strong>Enhanced Detection Guide:</strong> Yellow percentages indicate traits that were <strong>NOT DETECTED</strong> (confidence below 72%). Green/Blue percentages show <strong>DETECTED</strong> traits with high confidence. The system now shows full trait descriptions (e.g., "pants: red").
+            <strong>Enhanced Detection Guide:</strong> The AI now shows full trait descriptions (e.g., "pants: red" instead of just "pants"). Use thumbs up/down to provide feedback - this helps improve detection accuracy for future tests.
           </div>
         </div>
       </div>
@@ -290,11 +352,11 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
             Enhanced AI Model Testing
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Test with enhanced detection algorithms and adaptive thresholds
+            Test with enhanced detection algorithms and feedback learning
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{testImages.length}</div>
               <div className="text-sm text-slate-400">Test Images</div>
@@ -306,6 +368,10 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{testResults.length}</div>
               <div className="text-sm text-slate-400">Tests Complete</div>
+            </div>
+            <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+              <div className="text-2xl font-bold text-green-400">{collectedFeedback.length}</div>
+              <div className="text-sm text-slate-400">Feedback Entries</div>
             </div>
           </div>
 
@@ -359,7 +425,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
               Enhanced Test Results Review
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review enhanced AI predictions with full trait descriptions and confidence metrics
+              Review AI predictions with full trait descriptions and provide feedback
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -407,6 +473,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                   <div className="space-y-3">
                     {Object.entries(currentResult.results).map(([category, result]) => {
                       const isDetected = result.confidence >= 0.72 && result.label !== 'Not Detected';
+                      const currentFeedback = feedbackData[category];
                       
                       return (
                         <div key={category} className="bg-slate-800/50 rounded-lg p-4">
@@ -427,7 +494,7 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                                 variant={getConfidenceBadgeVariant(result.confidence, isDetected)}
                                 className={`${isDetected ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}
                               >
-                                {isDetected ? `${category}: ${result.label}` : `${category}: Not Detected`}
+                                {result.fullTraitDescription}
                               </Badge>
                               <span className={`text-sm font-mono ${getConfidenceColor(result.confidence, isDetected)}`}>
                                 {Math.round(result.confidence * 100)}%
@@ -436,33 +503,44 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                             
                             {isDetected && (
                               <div className="text-xs text-slate-400 mt-1">
-                                <div>Detected Value: <span className="text-white font-medium">{result.label}</span></div>
-                                <div>Full Trait: <span className="text-blue-300 font-medium">{category}: {result.label}</span></div>
+                                <div>Full Trait: <span className="text-blue-300 font-medium">{result.fullTraitDescription}</span></div>
                                 <div>Confidence: <span className="text-green-300 font-medium">{Math.round(result.confidence * 100)}%</span></div>
                               </div>
                             )}
                             
-                            <div className="flex items-center gap-2 pt-2">
-                              <span className="text-xs text-slate-400">Is this correct?</span>
+                            <div className="flex items-center gap-2 pt-2 border-t border-slate-700">
+                              <span className="text-xs text-slate-400">Is "{result.fullTraitDescription}" correct?</span>
                               <div className="flex gap-1">
                                 <Button
                                   size="sm"
-                                  variant={feedbackData[category]?.correct === true ? "default" : "outline"}
-                                  onClick={() => handleFeedbackToggle(category, 'correct', true)}
+                                  variant={currentFeedback?.correct === true ? "default" : "outline"}
+                                  onClick={() => handleFeedbackToggle(category, true)}
                                   className="h-6 px-2"
                                 >
                                   <ThumbsUp className="w-3 h-3" />
                                 </Button>
                                 <Button
                                   size="sm"
-                                  variant={feedbackData[category]?.correct === false ? "destructive" : "outline"}
-                                  onClick={() => handleFeedbackToggle(category, 'correct', false)}
+                                  variant={currentFeedback?.correct === false ? "destructive" : "outline"}
+                                  onClick={() => handleFeedbackToggle(category, false)}
                                   className="h-6 px-2"
                                 >
                                   <ThumbsDown className="w-3 h-3" />
                                 </Button>
                               </div>
                             </div>
+                            
+                            {currentFeedback?.correct === false && (
+                              <div className="mt-2 space-y-2">
+                                <Label className="text-xs text-slate-400">What should it be?</Label>
+                                <Input
+                                  placeholder={`Enter correct ${category} value`}
+                                  value={currentFeedback?.actualValue || ''}
+                                  onChange={(e) => handleFeedbackToggle(category, false, e.target.value)}
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -475,6 +553,17 @@ const ModelTester = ({ trainedTraits, onTestCompleted }: ModelTesterProps) => {
                     </Button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Feedback Summary */}
+            {collectedFeedback.length > 0 && (
+              <div className="mt-6 p-4 bg-blue-900/20 border border-blue-600 rounded-lg">
+                <h4 className="text-blue-200 font-medium mb-2">Feedback Summary</h4>
+                <p className="text-sm text-blue-200">
+                  Collected {collectedFeedback.length} feedback entries. 
+                  This data helps improve AI accuracy for future detections.
+                </p>
               </div>
             )}
 
