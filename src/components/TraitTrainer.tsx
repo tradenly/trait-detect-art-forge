@@ -316,13 +316,7 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
         </CardContent>
       </Card>
 
-      {/* Rare Trait Definer */}
-      <RareTraitDefiner 
-        onRareTraitsUpdate={handleRareTraitsUpdate}
-        initialRareTraits={rareTraits}
-      />
-
-      {/* Add New Category */}
+      {/* Add New Category - MOVED TO FIRST POSITION */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white text-lg">1. Create Trait Categories</CardTitle>
@@ -478,6 +472,13 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
           </CardContent>
         </Card>
       )}
+
+      {/* Rare Trait Definer - MOVED TO AFTER REGULAR TRAITS */}
+      <RareTraitDefiner 
+        onRareTraitsUpdate={handleRareTraitsUpdate}
+        initialRareTraits={rareTraits}
+        trainedTraits={trainedTraits}
+      />
 
       {/* Training Summary */}
       {categories.length > 0 && (
