@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -9,6 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { findClosestLabel, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
 import EditableMetadataCard from './EditableMetadataCard';
+import { enhancedDetector } from '@/utils/enhancedDetection';
 
 interface TraitClassifierProps {
   uploadedImages: File[];
@@ -66,23 +66,32 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         
-        // Strict detection with conservative thresholds
+        // Use enhanced detection with feedback corrections
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Analyzing ${traitCategory} for ${file.name}`);
           
-          const result = findClosestLabel(embedding, traitValues as any, traitCategory);
+          // First try enhanced detection (includes feedback corrections)
+          const enhancedResult = enhancedDetector.enhancedDetection(embedding, traitValues as any, traitCategory);
           
-          // Only accept high-confidence detections
-          if (result && result.label !== 'Not Detected' && result.confidence >= 0.78) {
-            detectedTraits[traitCategory] = result.label;
-            confidenceScores[traitCategory] = result.confidence;
+          if (enhancedResult && enhancedResult.label !== 'Not Detected' && enhancedResult.confidence >= 0.78) {
+            detectedTraits[traitCategory] = enhancedResult.label;
+            confidenceScores[traitCategory] = enhancedResult.confidence;
             detectionStatus[traitCategory] = 'detected';
-            console.log(`✅ ${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}% confidence)`);
+            console.log(`✅ ${traitCategory}: ${enhancedResult.label} (${Math.round(enhancedResult.confidence * 100)}% confidence) ${enhancedResult.confidence > 0.85 ? '[FEEDBACK ENHANCED]' : ''}`);
           } else {
-            // Don't add "Not Detected" traits to avoid clutter
-            detectionStatus[traitCategory] = 'not_detected';
-            confidenceScores[traitCategory] = result?.confidence || 0;
-            console.log(`❌ ${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}% confidence, threshold: 78%)`);
+            // Fallback to basic detection
+            const result = findClosestLabel(embedding, traitValues as any, traitCategory);
+            
+            if (result && result.label !== 'Not Detected' && result.confidence >= 0.78) {
+              detectedTraits[traitCategory] = result.label;
+              confidenceScores[traitCategory] = result.confidence;
+              detectionStatus[traitCategory] = 'detected';
+              console.log(`✅ ${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}% confidence)`);
+            } else {
+              detectionStatus[traitCategory] = 'not_detected';
+              confidenceScores[traitCategory] = result?.confidence || 0;
+              console.log(`❌ ${traitCategory}: Not detected (${Math.round((result?.confidence || 0) * 100)}% confidence, threshold: 78%)`);
+            }
           }
         }
 

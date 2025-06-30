@@ -1,4 +1,3 @@
-
 import * as tf from '@tensorflow/tfjs';
 import { cosineSimilarity } from './embeddingUtils';
 
@@ -16,9 +15,19 @@ interface EnhancedDetectionResult {
   qualityScore: number;
 }
 
+interface FeedbackCorrection {
+  imageEmbedding: tf.Tensor;
+  wrongLabel: string;
+  correctLabel: string;
+  category: string;
+  fileName: string;
+  timestamp: number;
+}
+
 export class EnhancedDetector {
   private adaptiveThresholds: Map<string, number> = new Map();
   private categoryStats: Map<string, { avgSimilarity: number; variance: number }> = new Map();
+  private feedbackCorrections: Map<string, FeedbackCorrection[]> = new Map(); // Store corrections by category
 
   constructor() {
     this.initializeAdaptiveThresholds();
@@ -127,6 +136,42 @@ export class EnhancedDetector {
     console.log(`🎯 Updated adaptive threshold for ${category}: ${threshold.toFixed(3)} (${examples.length} examples, variance: ${stats.variance.toFixed(3)})`);
   }
 
+  public addFeedbackCorrection(
+    imageEmbedding: tf.Tensor,
+    wrongLabel: string,
+    correctLabel: string,
+    category: string,
+    fileName: string
+  ) {
+    if (!this.feedbackCorrections.has(category)) {
+      this.feedbackCorrections.set(category, []);
+    }
+
+    const corrections = this.feedbackCorrections.get(category)!;
+    
+    // Clone the embedding to avoid disposal issues
+    const clonedEmbedding = imageEmbedding.clone();
+    
+    corrections.push({
+      imageEmbedding: clonedEmbedding,
+      wrongLabel,
+      correctLabel,
+      category,
+      fileName,
+      timestamp: Date.now()
+    });
+
+    console.log(`📝 Added feedback correction for ${category}: ${wrongLabel} → ${correctLabel} (${fileName})`);
+    
+    // Keep only the last 50 corrections per category to manage memory
+    if (corrections.length > 50) {
+      const removed = corrections.shift();
+      if (removed?.imageEmbedding) {
+        removed.imageEmbedding.dispose();
+      }
+    }
+  }
+
   public enhancedDetection(
     targetEmbedding: tf.Tensor,
     labelEmbeddings: { [key: string]: TrainingExample[] },
@@ -135,6 +180,13 @@ export class EnhancedDetector {
     if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
       console.log('❌ Invalid inputs for enhanced detection');
       return null;
+    }
+
+    // First check for feedback corrections
+    const correctionResult = this.applyFeedbackCorrections(targetEmbedding, category);
+    if (correctionResult) {
+      console.log(`✅ FEEDBACK CORRECTION APPLIED: "${correctionResult.label}" for ${category}`);
+      return correctionResult;
     }
 
     let bestMatch: string | null = null;
@@ -216,6 +268,42 @@ export class EnhancedDetector {
     };
   }
 
+  private applyFeedbackCorrections(
+    targetEmbedding: tf.Tensor,
+    category: string
+  ): EnhancedDetectionResult | null {
+    const corrections = this.feedbackCorrections.get(category);
+    if (!corrections || corrections.length === 0) {
+      return null;
+    }
+
+    let bestMatch: string | null = null;
+    let bestSimilarity = -1;
+
+    for (const correction of corrections) {
+      const similarity = this.enhancedCosineSimilarity(targetEmbedding, correction.imageEmbedding);
+      
+      // If this image is very similar to a corrected image, use the correction
+      if (similarity > 0.85 && similarity > bestSimilarity) { // High threshold for corrections
+        bestSimilarity = similarity;
+        bestMatch = correction.correctLabel;
+        console.log(`🎯 Feedback match found: ${correction.fileName} → ${correction.correctLabel} (similarity: ${similarity.toFixed(3)})`);
+      }
+    }
+
+    if (bestMatch && bestSimilarity > 0.85) {
+      return {
+        label: bestMatch,
+        confidence: bestSimilarity,
+        similarity: bestSimilarity,
+        consistencyScore: 1.0, // High consistency for corrections
+        qualityScore: bestSimilarity
+      };
+    }
+
+    return null;
+  }
+
   private enhancedCosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
     // More robust cosine similarity with better numerical stability
     const aFlat = a.flatten();
@@ -249,6 +337,30 @@ export class EnhancedDetector {
     
     // Clamp to valid range with better bounds checking
     return Math.max(-1, Math.min(1, similarity || 0));
+  }
+
+  public clearFeedbackCorrections(category?: string) {
+    if (category) {
+      const corrections = this.feedbackCorrections.get(category);
+      if (corrections) {
+        corrections.forEach(correction => correction.imageEmbedding.dispose());
+        this.feedbackCorrections.delete(category);
+      }
+    } else {
+      // Clear all corrections
+      this.feedbackCorrections.forEach(corrections => {
+        corrections.forEach(correction => correction.imageEmbedding.dispose());
+      });
+      this.feedbackCorrections.clear();
+    }
+  }
+
+  public getFeedbackStats(): { [category: string]: number } {
+    const stats: { [category: string]: number } = {};
+    this.feedbackCorrections.forEach((corrections, category) => {
+      stats[category] = corrections.length;
+    });
+    return stats;
   }
 }
 

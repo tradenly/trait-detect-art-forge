@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +8,7 @@ import { Plus, X, Upload, Brain, Trash2, AlertTriangle, CheckCircle } from 'luci
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage, batchProcessImages, validateTrainingQuality } from '@/utils/embeddingUtils';
 import { enhancedDetector } from '@/utils/enhancedDetection';
+import RareTraitDefiner from './RareTraitDefiner';
 import * as tf from '@tensorflow/tfjs';
 
 interface TrainingExample {
@@ -23,12 +23,21 @@ interface TrainedTraits {
   };
 }
 
+interface RareTrait {
+  category: string;
+  value: string;
+  rarity: 'rare' | 'epic' | 'legendary';
+  description?: string;
+}
+
 interface TraitTrainerProps {
   onTraitsUpdated: (traits: TrainedTraits) => void;
   trainedTraits: TrainedTraits;
+  onRareTraitsUpdated?: (rareTraits: RareTrait[]) => void;
+  rareTraits?: RareTrait[];
 }
 
-const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => {
+const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rareTraits = [] }: TraitTrainerProps) => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [newTraitValue, setNewTraitValue] = useState('');
@@ -275,6 +284,12 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
     return "Insufficient (<3 examples)";
   };
 
+  const handleRareTraitsUpdate = (updatedRareTraits: RareTrait[]) => {
+    if (onRareTraitsUpdated) {
+      onRareTraitsUpdated(updatedRareTraits);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 p-3 bg-slate-700/50 rounded-lg">
@@ -300,6 +315,12 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits }: TraitTrainerProps) => 
           <p><strong>Avoid Conflicts:</strong> Don't train overlapping traits (e.g., "shorts" and "pants" for same image)</p>
         </CardContent>
       </Card>
+
+      {/* Rare Trait Definer */}
+      <RareTraitDefiner 
+        onRareTraitsUpdate={handleRareTraitsUpdate}
+        initialRareTraits={rareTraits}
+      />
 
       {/* Add New Category */}
       <Card className="bg-slate-700/30 border-slate-600">
