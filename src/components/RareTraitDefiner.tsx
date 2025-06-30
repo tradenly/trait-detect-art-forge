@@ -13,8 +13,8 @@ interface RareTrait {
   value: string;
   rarity: 'rare' | 'epic' | 'legendary';
   description?: string;
-  imageUrl?: string;
-  fileName?: string;
+  imageUrls?: string[];
+  fileNames?: string[];
 }
 
 interface RareTraitDefinerProps {
@@ -28,26 +28,44 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
   const [newTrait, setNewTrait] = useState<Partial<RareTrait>>({
     category: '',
     value: '',
-    rarity: 'rare'
+    rarity: 'rare',
+    imageUrls: [],
+    fileNames: []
   });
 
   const categories = Object.keys(trainedTraits);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    const newImageUrls: string[] = [];
+    const newFileNames: string[] = [];
+
+    files.forEach(file => {
       const imageUrl = URL.createObjectURL(file);
-      setNewTrait(prev => ({
-        ...prev,
-        imageUrl,
-        fileName: file.name
-      }));
-      
-      toast({
-        title: "Image uploaded",
-        description: "Rare trait example image added"
-      });
-    }
+      newImageUrls.push(imageUrl);
+      newFileNames.push(file.name);
+    });
+
+    setNewTrait(prev => ({
+      ...prev,
+      imageUrls: [...(prev.imageUrls || []), ...newImageUrls],
+      fileNames: [...(prev.fileNames || []), ...newFileNames]
+    }));
+    
+    toast({
+      title: "Images uploaded",
+      description: `${files.length} rare trait example images added`
+    });
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setNewTrait(prev => ({
+      ...prev,
+      imageUrls: prev.imageUrls?.filter((_, i) => i !== index) || [],
+      fileNames: prev.fileNames?.filter((_, i) => i !== index) || []
+    }));
   };
 
   const handleAddRareTrait = () => {
@@ -65,8 +83,8 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
       value: newTrait.value,
       rarity: newTrait.rarity || 'rare',
       description: newTrait.description,
-      imageUrl: newTrait.imageUrl,
-      fileName: newTrait.fileName
+      imageUrls: newTrait.imageUrls || [],
+      fileNames: newTrait.fileNames || []
     };
 
     const updatedTraits = [...rareTraits, rareTrait];
@@ -76,7 +94,9 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
     setNewTrait({
       category: '',
       value: '',
-      rarity: 'rare'
+      rarity: 'rare',
+      imageUrls: [],
+      fileNames: []
     });
 
     toast({
@@ -127,19 +147,13 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-800/50 rounded-lg">
           <div className="space-y-2">
             <Label className="text-white">Category</Label>
-            <select
+            <Input
+              placeholder="Enter category name (e.g., Special Effects, Legendary Items)"
               value={newTrait.category || ''}
               onChange={(e) => setNewTrait(prev => ({ ...prev, category: e.target.value }))}
-              className="w-full p-2 bg-slate-700 border border-slate-600 rounded-md text-white"
-            >
-              <option value="">Select a category</option>
-              {categories.map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
-            {categories.length === 0 && (
-              <p className="text-xs text-slate-400">Create trait categories first</p>
-            )}
+              className="bg-slate-700 border-slate-600 text-white"
+            />
+            <p className="text-xs text-slate-400">You can create new categories or use existing ones</p>
           </div>
           
           <div className="space-y-2">
@@ -176,42 +190,50 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
           </div>
           
           <div className="md:col-span-2 space-y-2">
-            <Label className="text-white">Example Image (Optional)</Label>
-            <div className="flex items-center gap-3">
-              {newTrait.imageUrl && (
-                <div className="relative">
-                  <img 
-                    src={newTrait.imageUrl} 
-                    alt="Rare trait example" 
-                    className="w-16 h-16 object-cover rounded border border-slate-600"
-                  />
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="absolute -top-1 -right-1 h-6 w-6 p-0"
-                    onClick={() => setNewTrait(prev => ({ ...prev, imageUrl: undefined, fileName: undefined }))}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
+            <Label className="text-white">Example Images (Optional) - Upload 5-10 images</Label>
+            <div className="space-y-3">
+              {newTrait.imageUrls && newTrait.imageUrls.length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {newTrait.imageUrls.map((imageUrl, index) => (
+                    <div key={index} className="relative">
+                      <img 
+                        src={imageUrl} 
+                        alt={`Rare trait example ${index + 1}`} 
+                        className="w-full h-16 object-cover rounded border border-slate-600"
+                      />
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="absolute -top-1 -right-1 h-6 w-6 p-0"
+                        onClick={() => handleRemoveImage(index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="relative flex-1">
+              <div className="relative">
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleImageUpload}
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
                 <Button variant="outline" className="w-full">
                   <Upload className="w-4 h-4 mr-2" />
-                  {newTrait.imageUrl ? 'Change Image' : 'Upload Example Image'}
+                  {newTrait.imageUrls && newTrait.imageUrls.length > 0 ? 'Add More Images' : 'Upload Example Images'}
                 </Button>
               </div>
+              <p className="text-xs text-slate-400">
+                Upload 5-10 diverse examples for best accuracy (current: {newTrait.imageUrls?.length || 0})
+              </p>
             </div>
           </div>
           
           <div className="md:col-span-2">
-            <Button onClick={handleAddRareTrait} className="w-full" disabled={categories.length === 0}>
+            <Button onClick={handleAddRareTrait} className="w-full">
               <Plus className="w-4 h-4 mr-2" />
               Add Rare Trait
             </Button>
@@ -227,18 +249,33 @@ const RareTraitDefiner = ({ onRareTraitsUpdate, initialRareTraits = [], trainedT
                 <div key={index} className={`p-3 rounded-lg border ${getRarityColor(trait.rarity)}`}>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-start gap-3">
-                      {trait.imageUrl && (
-                        <img 
-                          src={trait.imageUrl} 
-                          alt={`${trait.value} example`} 
-                          className="w-12 h-12 object-cover rounded border border-slate-600"
-                        />
+                      {trait.imageUrls && trait.imageUrls.length > 0 && (
+                        <div className="grid grid-cols-2 gap-1">
+                          {trait.imageUrls.slice(0, 4).map((imageUrl, imgIndex) => (
+                            <img 
+                              key={imgIndex}
+                              src={imageUrl} 
+                              alt={`${trait.value} example ${imgIndex + 1}`} 
+                              className="w-6 h-6 object-cover rounded border border-slate-600"
+                            />
+                          ))}
+                          {trait.imageUrls.length > 4 && (
+                            <div className="w-6 h-6 bg-slate-700 rounded flex items-center justify-center text-xs">
+                              +{trait.imageUrls.length - 4}
+                            </div>
+                          )}
+                        </div>
                       )}
                       <div>
                         <div className="font-medium">{trait.category}: {trait.value}</div>
                         <Badge variant="outline" className={`text-xs mt-1 ${getRarityColor(trait.rarity)}`}>
                           {trait.rarity.toUpperCase()}
                         </Badge>
+                        {trait.imageUrls && trait.imageUrls.length > 0 && (
+                          <div className="text-xs opacity-60 mt-1">
+                            {trait.imageUrls.length} example images
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button
