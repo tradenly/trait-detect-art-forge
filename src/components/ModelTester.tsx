@@ -35,7 +35,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
   const [loading, setLoading] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [imageEmbeddings, setImageEmbeddings] = useState<tf.Tensor[]>([]);
-  const [feedback, setFeedback] = useState<{ [key: string]: boolean }>({});
+  const [feedback, setFeedback] = useState<{ [key: string]: boolean | string }>({});
   const [correctionInputs, setCorrectionInputs] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
