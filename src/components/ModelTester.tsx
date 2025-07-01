@@ -123,7 +123,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         const embedding = imageEmbeddings[i];
         const detectedTraits: any = {};
         const confidenceScores: any = {};
-        const detectionStatus: any = {};
 
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           const result = findClosestLabel(embedding, traitValues as any, traitCategory);
@@ -131,10 +130,8 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           if (result && result.label !== 'Not Detected') {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
-            detectionStatus[traitCategory] = 'detected';
           } else {
             detectedTraits[traitCategory] = 'Not Detected';
-            detectionStatus[traitCategory] = 'not_detected';
             confidenceScores[traitCategory] = result?.confidence || 0;
           }
         }
@@ -144,7 +141,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           fileName: imageFiles[i]?.name,
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
-          detectionStatus: detectionStatus,
           imageEmbedding: embedding
         });
       }
@@ -182,14 +178,20 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
 
       toast({
         title: "Feedback Recorded ✅",
-        description: `AI confirmed: ${category} detection was correct`
+        description: `Confirmed: ${category} detection was correct`
       });
     } else {
-      // Negative feedback - mark as incorrect and show input for correction
+      // Negative feedback - show correction input
       setFeedback(prev => ({
         ...prev,
         [feedbackKey]: false
       }));
+
+      toast({
+        title: "Correction Needed",
+        description: `Please enter the correct ${category} value below`,
+        variant: "destructive"
+      });
     }
   };
 
@@ -198,7 +200,14 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     const feedbackKey = `${imageIndex}-${category}`;
     const correctValue = correctionInputs[feedbackKey];
 
-    if (!result || !correctValue?.trim()) return;
+    if (!result || !correctValue?.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a correction value",
+        variant: "destructive"
+      });
+      return;
+    }
 
     const detectedValue = result.detectedTraits[category] || 'Not Detected';
 
@@ -214,13 +223,19 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
 
       toast({
         title: "Correction Recorded ✅",
-        description: `AI will remember: ${category} should be "${correctValue}" for similar images`
+        description: `AI will learn: ${category} should be "${correctValue}" for similar images`
       });
 
-      // Clear the input
+      // Clear the input and mark as submitted
       setCorrectionInputs(prev => ({
         ...prev,
         [feedbackKey]: ''
+      }));
+
+      // Mark as corrected
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: 'corrected'
       }));
     }
   };
@@ -248,7 +263,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         <CardHeader>
           <CardTitle className="text-white">Test AI Model</CardTitle>
           <CardDescription className="text-slate-400">
-            Upload multiple images to test the trained AI model
+            Upload multiple images to test the trained AI model and provide feedback
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -297,65 +312,79 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
       {results.length > 0 && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
-            <CardTitle className="text-white">Detection Results</CardTitle>
+            <CardTitle className="text-white">Detection Results & Feedback</CardTitle>
             <CardDescription className="text-slate-400">
-              Review the detected traits and provide feedback for each image
+              Review detected traits and provide feedback to improve AI accuracy. 
+              <br />
+              <span className="text-green-400">✓ = Correct detection</span> | <span className="text-red-400">✗ = Wrong detection (provide correction)</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {results.map((result, index) => (
-              <div key={index} className="space-y-4 p-4 bg-slate-800/30 rounded-lg">
+              <div key={index} className="space-y-4 p-4 bg-slate-800/30 rounded-lg border border-slate-600">
                 <div className="flex items-start gap-4">
-                  <img src={result.imageUrl} alt="Detected" className="w-24 h-24 rounded-md object-cover" />
+                  <img src={result.imageUrl} alt="Test" className="w-24 h-24 rounded-md object-cover" />
                   <div className="flex-1">
                     <h4 className="text-white font-medium mb-3">{result.fileName}</h4>
-                    <div className="grid gap-4">
+                    <div className="space-y-3">
                       {Object.entries(trainedTraits).map(([category, values]) => {
                         const feedbackKey = `${index}-${category}`;
-                        const detectedValue = result.detectedTraits[category] || 'Not Detected';
+                        const detectedValue = result.detectedTraits[category];
                         const confidence = result.confidenceScores[category] || 0;
                         const feedbackValue = feedback[feedbackKey];
                         
                         return (
-                          <div key={category} className="p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                          <div key={category} className="p-3 bg-slate-700/50 rounded-lg">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Label className="text-white font-medium text-sm">{category}:</Label>
-                                  <Badge variant="secondary" className="bg-blue-600 text-white">
-                                    {detectedValue}
+                                <Label className="text-white font-medium text-sm">{category}:</Label>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge 
+                                    variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
+                                    className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
+                                  >
+                                    {detectedValue === 'Not Detected' ? `${category} - Not Detected` : `${category} - ${detectedValue}`}
                                   </Badge>
                                   {confidence > 0 && (
                                     <span className="text-slate-400 text-xs">
-                                      {Math.round(confidence * 100)}%
+                                      {Math.round(confidence * 100)}% confidence
                                     </span>
                                   )}
+                                  {detectedValue === 'Not Detected' && confidence > 0.5 && (
+                                    <div className="text-yellow-400 text-xs flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3" />
+                                      Uncertain
+                                    </div>
+                                  )}
                                 </div>
-                                {result.detectionStatus[category] === 'not_detected' && confidence > 0.5 && (
-                                  <div className="text-yellow-400 text-xs flex items-center gap-1">
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Low confidence
-                                  </div>
-                                )}
                               </div>
+                              
                               <div className="flex gap-2">
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleFeedback(index, category, true)}
-                                  disabled={feedbackValue === true}
-                                  className="h-8 w-8 p-0"
+                                  disabled={feedbackValue === true || feedbackValue === 'corrected'}
+                                  className="h-8 w-8 p-0 group"
+                                  title="Mark as correct detection"
                                 >
-                                  <CheckCircle className={`w-4 h-4 ${feedbackValue === true ? 'text-green-500' : 'text-slate-500 hover:text-green-400'}`} />
+                                  <CheckCircle className={`w-4 h-4 ${
+                                    feedbackValue === true ? 'text-green-500' : 
+                                    'text-slate-500 group-hover:text-green-400'
+                                  }`} />
                                 </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleFeedback(index, category, false)}
-                                  disabled={feedbackValue === false}
-                                  className="h-8 w-8 p-0"
+                                  disabled={feedbackValue === false || feedbackValue === 'corrected'}
+                                  className="h-8 w-8 p-0 group"
+                                  title="Mark as wrong detection and provide correction"
                                 >
-                                  <XCircle className={`w-4 h-4 ${feedbackValue === false ? 'text-red-500' : 'text-slate-500 hover:text-red-400'}`} />
+                                  <XCircle className={`w-4 h-4 ${
+                                    feedbackValue === false ? 'text-red-500' : 
+                                    'text-slate-500 group-hover:text-red-400'
+                                  }`} />
                                 </Button>
                               </div>
                             </div>
@@ -364,7 +393,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                               <div className="flex gap-2 mt-2">
                                 <Input
                                   type="text"
-                                  placeholder="Enter correct value"
+                                  placeholder={`Enter correct ${category} value`}
                                   value={correctionInputs[feedbackKey] || ''}
                                   onChange={(e) => handleCorrectionInputChange(index, category, e.target.value)}
                                   className="bg-slate-600 border-slate-500 text-white text-sm"
@@ -373,9 +402,16 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                                   size="sm"
                                   onClick={() => handleCorrectionSubmit(index, category)}
                                   disabled={!correctionInputs[feedbackKey]?.trim()}
+                                  className="bg-blue-600 hover:bg-blue-700"
                                 >
                                   Submit
                                 </Button>
+                              </div>
+                            )}
+
+                            {feedbackValue === 'corrected' && (
+                              <div className="text-green-400 text-sm mt-2">
+                                ✅ Correction submitted - AI will learn from this feedback
                               </div>
                             )}
                           </div>
