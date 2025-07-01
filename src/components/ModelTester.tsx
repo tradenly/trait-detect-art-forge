@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, ImagePlus, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, ImagePlus, AlertTriangle, Sparkles } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { findClosestLabel } from '@/utils/traitUtils';
@@ -24,11 +24,21 @@ interface TrainedTraits {
   };
 }
 
-interface ModelTesterProps {
-  trainedTraits: TrainedTraits;
+interface RareTrait {
+  category: string;
+  value: string;
+  rarity: 'rare' | 'epic' | 'legendary';
+  description?: string;
+  imageUrls?: string[];
+  fileNames?: string[];
 }
 
-const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
+interface ModelTesterProps {
+  trainedTraits: TrainedTraits;
+  rareTraits?: RareTrait[];
+}
+
+const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [results, setResults] = useState<any[]>([]);
@@ -92,6 +102,23 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     }
   };
 
+  const detectRareTraits = (embedding: tf.Tensor): { detectedRareTraits: string[], confidence: number } => {
+    const detectedRareTraits: string[] = [];
+    let maxConfidence = 0;
+
+    for (const rareTrait of rareTraits) {
+      // Check if this rare trait matches any of the detected regular traits
+      const regularTraitResult = findClosestLabel(embedding, trainedTraits[rareTrait.category] as any, rareTrait.category);
+      
+      if (regularTraitResult && regularTraitResult.label === rareTrait.value && regularTraitResult.confidence > 0.7) {
+        detectedRareTraits.push(`${rareTrait.category}: ${rareTrait.value} (${rareTrait.rarity})`);
+        maxConfidence = Math.max(maxConfidence, regularTraitResult.confidence);
+      }
+    }
+
+    return { detectedRareTraits, confidence: maxConfidence };
+  };
+
   const runDetection = async () => {
     if (!modelLoaded) {
       toast({
@@ -124,6 +151,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         const detectedTraits: any = {};
         const confidenceScores: any = {};
 
+        // Detect regular traits
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           const result = findClosestLabel(embedding, traitValues as any, traitCategory);
 
@@ -136,11 +164,16 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           }
         }
 
+        // Detect rare traits
+        const rareTraitResult = detectRareTraits(embedding);
+
         detectionResults.push({
           imageUrl: imageUrls[i],
           fileName: imageFiles[i]?.name,
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
+          rareTraits: rareTraitResult.detectedRareTraits,
+          rareTraitConfidence: rareTraitResult.confidence,
           imageEmbedding: embedding
         });
       }
@@ -170,7 +203,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     const feedbackKey = `${imageIndex}-${category}`;
 
     if (isCorrect) {
-      // Positive feedback
       setFeedback(prev => ({
         ...prev,
         [feedbackKey]: true
@@ -181,7 +213,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         description: `Confirmed: ${category} detection was correct`
       });
     } else {
-      // Negative feedback - show correction input
       setFeedback(prev => ({
         ...prev,
         [feedbackKey]: false
@@ -190,6 +221,36 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
       toast({
         title: "Correction Needed",
         description: `Please enter the correct ${category} value below`,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRareTraitFeedback = async (imageIndex: number, isCorrect: boolean) => {
+    const result = results[imageIndex];
+    if (!result) return;
+
+    const feedbackKey = `${imageIndex}-rare-traits`;
+
+    if (isCorrect) {
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: true
+      }));
+
+      toast({
+        title: "Rare Trait Feedback Recorded ✅",
+        description: "Confirmed: Rare trait detection was correct"
+      });
+    } else {
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: false
+      }));
+
+      toast({
+        title: "Rare Trait Correction Needed",
+        description: "Please specify the actual rare traits below",
         variant: "destructive"
       });
     }
@@ -211,7 +272,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
 
     const detectedValue = result.detectedTraits[category] || 'Not Detected';
 
-    // Store the feedback correction in the enhanced detector
     if (result.imageEmbedding) {
       enhancedDetector.addFeedbackCorrection(
         result.imageEmbedding,
@@ -226,13 +286,51 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
         description: `AI will learn: ${category} should be "${correctValue}" for similar images`
       });
 
-      // Clear the input and mark as submitted
       setCorrectionInputs(prev => ({
         ...prev,
         [feedbackKey]: ''
       }));
 
-      // Mark as corrected
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: 'corrected'
+      }));
+    }
+  };
+
+  const handleRareTraitCorrectionSubmit = async (imageIndex: number) => {
+    const result = results[imageIndex];
+    const feedbackKey = `${imageIndex}-rare-traits`;
+    const correctValue = correctionInputs[feedbackKey];
+
+    if (!result || !correctValue?.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter the correct rare traits",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (result.imageEmbedding) {
+      enhancedDetector.addFeedbackCorrection(
+        result.imageEmbedding,
+        result.rareTraits.length > 0 ? result.rareTraits.join(', ') : 'No rare traits',
+        correctValue.trim(),
+        'rare-traits',
+        result.fileName
+      );
+
+      toast({
+        title: "Rare Trait Correction Recorded ✅",
+        description: `AI will learn rare traits: "${correctValue}" for similar images`
+      });
+
+      setCorrectionInputs(prev => ({
+        ...prev,
+        [feedbackKey]: ''
+      }));
+
       setFeedback(prev => ({
         ...prev,
         [feedbackKey]: 'corrected'
@@ -255,6 +353,15 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
       img.onerror = reject;
       img.src = URL.createObjectURL(file);
     });
+  };
+
+  const getRarityColor = (rarity: string) => {
+    switch (rarity) {
+      case 'rare': return 'bg-blue-600 text-white';
+      case 'epic': return 'bg-purple-600 text-white';
+      case 'legendary': return 'bg-yellow-600 text-white';
+      default: return 'bg-gray-600 text-white';
+    }
   };
 
   return (
@@ -327,6 +434,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                   <div className="flex-1">
                     <h4 className="text-white font-medium mb-3">{result.fileName}</h4>
                     <div className="space-y-3">
+                      {/* Regular Traits */}
                       {Object.entries(trainedTraits).map(([category, values]) => {
                         const feedbackKey = `${index}-${category}`;
                         const detectedValue = result.detectedTraits[category];
@@ -417,6 +525,114 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                           </div>
                         );
                       })}
+
+                      {/* Rare Traits Section */}
+                      <div className="p-3 bg-gradient-to-r from-purple-900/30 to-yellow-900/30 rounded-lg border border-yellow-600/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex-1">
+                            <Label className="text-white font-medium text-sm flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-yellow-400" />
+                              Rare Traits:
+                            </Label>
+                            <div className="flex items-center gap-2 mt-1">
+                              {result.rareTraits && result.rareTraits.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {result.rareTraits.map((rareTrait: string, rareIndex: number) => (
+                                    <Badge 
+                                      key={rareIndex}
+                                      className="bg-gradient-to-r from-purple-600 to-yellow-600 text-white text-xs"
+                                    >
+                                      {rareTrait}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <Badge variant="secondary" className="bg-gray-600 text-white">
+                                  No Rare Traits Detected
+                                </Badge>
+                              )}
+                              {result.rareTraitConfidence > 0 && (
+                                <span className="text-slate-400 text-xs">
+                                  {Math.round(result.rareTraitConfidence * 100)}% confidence
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {(() => {
+                              const rareTraitFeedbackKey = `${index}-rare-traits`;
+                              const rareTraitFeedback = feedback[rareTraitFeedbackKey];
+                              
+                              return (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRareTraitFeedback(index, true)}
+                                    disabled={rareTraitFeedback === true || rareTraitFeedback === 'corrected'}
+                                    className="h-8 w-8 p-0 group"
+                                    title="Mark rare trait detection as correct"
+                                  >
+                                    <CheckCircle className={`w-4 h-4 ${
+                                      rareTraitFeedback === true ? 'text-green-500' : 
+                                      'text-slate-500 group-hover:text-green-400'
+                                    }`} />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRareTraitFeedback(index, false)}
+                                    disabled={rareTraitFeedback === false || rareTraitFeedback === 'corrected'}
+                                    className="h-8 w-8 p-0 group"
+                                    title="Mark rare trait detection as wrong and provide correction"
+                                  >
+                                    <XCircle className={`w-4 h-4 ${
+                                      rareTraitFeedback === false ? 'text-red-500' : 
+                                      'text-slate-500 group-hover:text-red-400'
+                                    }`} />
+                                  </Button>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                        
+                        {(() => {
+                          const rareTraitFeedbackKey = `${index}-rare-traits`;
+                          const rareTraitFeedback = feedback[rareTraitFeedbackKey];
+                          
+                          return (
+                            <>
+                              {rareTraitFeedback === false && (
+                                <div className="flex gap-2 mt-2">
+                                  <Input
+                                    type="text"
+                                    placeholder="Enter the actual rare traits (e.g., Background: Golden Glow (legendary), Eyes: Laser (epic))"
+                                    value={correctionInputs[rareTraitFeedbackKey] || ''}
+                                    onChange={(e) => handleCorrectionInputChange(index, 'rare-traits', e.target.value)}
+                                    className="bg-slate-600 border-slate-500 text-white text-sm"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleRareTraitCorrectionSubmit(index)}
+                                    disabled={!correctionInputs[rareTraitFeedbackKey]?.trim()}
+                                    className="bg-purple-600 hover:bg-purple-700"
+                                  >
+                                    Submit
+                                  </Button>
+                                </div>
+                              )}
+
+                              {rareTraitFeedback === 'corrected' && (
+                                <div className="text-green-400 text-sm mt-2">
+                                  ✅ Rare trait correction submitted - AI will learn from this feedback
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>
