@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +42,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [imageEmbeddings, setImageEmbeddings] = useState<tf.Tensor[]>([]);
   const [feedback, setFeedback] = useState<{ [key: string]: boolean }>({});
+  const [correctionInputs, setCorrectionInputs] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     loadModel().then(() => {
@@ -70,6 +70,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     setImageUrls(urls);
     setResults([]);
     setFeedback({});
+    setCorrectionInputs({});
 
     try {
       const embeddings: tf.Tensor[] = [];
@@ -119,6 +120,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     setLoading(true);
     setResults([]);
     setFeedback({});
+    setCorrectionInputs({});
 
     try {
       const detectionResults: any[] = [];
@@ -148,7 +150,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
           detectionStatus: detectionStatus,
-          imageEmbedding: embedding // Store the embedding for feedback
+          imageEmbedding: embedding
         });
       }
 
@@ -170,37 +172,70 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     }
   };
 
-  const handleFeedback = async (imageIndex: number, category: string, isCorrect: boolean, correctValue?: string) => {
+  const handleFeedback = async (imageIndex: number, category: string, isCorrect: boolean) => {
     const result = results[imageIndex];
     if (!result) return;
 
-    const detectedValue = result.detectedTraits[category];
-    const actualCorrectValue = correctValue || detectedValue;
+    const feedbackKey = `${imageIndex}-${category}`;
+    const detectedValue = result.detectedTraits[category] || 'Not Detected';
+
+    if (isCorrect) {
+      // Positive feedback
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: true
+      }));
+
+      toast({
+        title: "Feedback Recorded ✅",
+        description: `AI confirmed: ${category} detection was correct`
+      });
+    } else {
+      // Negative feedback - mark as incorrect and show input for correction
+      setFeedback(prev => ({
+        ...prev,
+        [feedbackKey]: false
+      }));
+    }
+  };
+
+  const handleCorrectionSubmit = async (imageIndex: number, category: string) => {
+    const result = results[imageIndex];
+    const feedbackKey = `${imageIndex}-${category}`;
+    const correctValue = correctionInputs[feedbackKey];
+
+    if (!result || !correctValue?.trim()) return;
+
+    const detectedValue = result.detectedTraits[category] || 'Not Detected';
 
     // Store the feedback correction in the enhanced detector
-    if (!isCorrect && correctValue && result.imageEmbedding) {
+    if (result.imageEmbedding) {
       enhancedDetector.addFeedbackCorrection(
         result.imageEmbedding,
-        detectedValue || 'Not Detected',
-        correctValue,
+        detectedValue,
+        correctValue.trim(),
         category,
         result.fileName
       );
 
       toast({
-        title: "Feedback Recorded ✅",
+        title: "Correction Recorded ✅",
         description: `AI will remember: ${category} should be "${correctValue}" for similar images`
       });
-    } else if (isCorrect) {
-      toast({
-        title: "Feedback Recorded ✅", 
-        description: `AI confirmed: ${category} detection was correct`
-      });
-    }
 
-    setFeedback(prevFeedback => ({
-      ...prevFeedback,
-      [`${imageIndex}-${category}`]: isCorrect
+      // Clear the input
+      setCorrectionInputs(prev => ({
+        ...prev,
+        [feedbackKey]: ''
+      }));
+    }
+  };
+
+  const handleCorrectionInputChange = (imageIndex: number, category: string, value: string) => {
+    const feedbackKey = `${imageIndex}-${category}`;
+    setCorrectionInputs(prev => ({
+      ...prev,
+      [feedbackKey]: value
     }));
   };
 
@@ -280,50 +315,77 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                   <img src={result.imageUrl} alt="Detected" className="w-24 h-24 rounded-md object-cover" />
                   <div className="flex-1">
                     <h4 className="text-white font-medium mb-2">{result.fileName}</h4>
-                    <div className="space-y-2">
-                      {Object.entries(trainedTraits).map(([category, values]) => (
-                        <div key={category} className="space-y-1">
-                          <Label className="text-white">{category}</Label>
-                          <div className="flex items-center justify-between">
-                            <div className="text-slate-400">
-                              Detected: {result.detectedTraits[category] || 'Not Detected'}
+                    <div className="space-y-3">
+                      {Object.entries(trainedTraits).map(([category, values]) => {
+                        const feedbackKey = `${index}-${category}`;
+                        const detectedValue = result.detectedTraits[category] || 'Not Detected';
+                        const confidence = result.confidenceScores[category] || 0;
+                        const feedbackValue = feedback[feedbackKey];
+                        
+                        return (
+                          <div key={category} className="space-y-2 p-3 bg-slate-700/50 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-white font-medium">{category}</Label>
+                                <div className="text-slate-300 text-sm">
+                                  Detected: <span className="font-medium">{detectedValue}</span>
+                                  {confidence > 0 && (
+                                    <span className="ml-2 text-slate-400">
+                                      ({Math.round(confidence * 100)}% confidence)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleFeedback(index, category, true)}
+                                  disabled={feedbackValue === true}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <CheckCircle className={`w-4 h-4 ${feedbackValue === true ? 'text-green-500' : 'text-slate-500 hover:text-green-400'}`} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleFeedback(index, category, false)}
+                                  disabled={feedbackValue === false}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <XCircle className={`w-4 h-4 ${feedbackValue === false ? 'text-red-500' : 'text-slate-500 hover:text-red-400'}`} />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleFeedback(index, category, true)}
-                                disabled={feedback[`${index}-${category}`] === true}
-                              >
-                                <CheckCircle className={`w-4 h-4 ${feedback[`${index}-${category}`] === true ? 'text-green-500' : 'text-slate-500'}`} />
-                              </Button>
-                              <Button variant="ghost" size="sm">
-                                <Label htmlFor={`correct-${index}-${category}`} className="cursor-pointer">
-                                  <XCircle className="w-4 h-4 text-red-500" />
-                                </Label>
+                            
+                            {feedbackValue === false && (
+                              <div className="flex gap-2 mt-2">
                                 <Input
                                   type="text"
-                                  id={`correct-${index}-${category}`}
-                                  placeholder="Correct Value"
-                                  className="hidden"
-                                  onBlur={(e) => {
-                                    const correctValue = e.target.value.trim();
-                                    if (correctValue) {
-                                      handleFeedback(index, category, false, correctValue);
-                                    }
-                                  }}
+                                  placeholder="Enter correct value"
+                                  value={correctionInputs[feedbackKey] || ''}
+                                  onChange={(e) => handleCorrectionInputChange(index, category, e.target.value)}
+                                  className="bg-slate-600 border-slate-500 text-white"
                                 />
-                              </Button>
-                            </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleCorrectionSubmit(index, category)}
+                                  disabled={!correctionInputs[feedbackKey]?.trim()}
+                                >
+                                  Submit
+                                </Button>
+                              </div>
+                            )}
+                            
+                            {result.detectionStatus[category] === 'not_detected' && confidence > 0.6 && (
+                              <div className="text-yellow-400 text-sm flex items-center gap-1">
+                                <AlertTriangle className="w-4 h-4" />
+                                Low confidence detection
+                              </div>
+                            )}
                           </div>
-                          {result.detectionStatus[category] === 'not_detected' && result.confidenceScores[category] > 0.6 && (
-                            <div className="text-yellow-400 text-sm flex items-center gap-1">
-                              <AlertTriangle className="w-4 h-4" />
-                              Low confidence ({Math.round(result.confidenceScores[category] * 100)}%)
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
