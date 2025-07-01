@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,13 +26,6 @@ interface TrainedTraits {
 
 interface ModelTesterProps {
   trainedTraits: TrainedTraits;
-}
-
-interface DetectionResult {
-  label: string;
-  confidence: number;
-  avgSimilarity: number;
-  individualScores: number[];
 }
 
 const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
@@ -139,6 +133,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
             confidenceScores[traitCategory] = result.confidence;
             detectionStatus[traitCategory] = 'detected';
           } else {
+            detectedTraits[traitCategory] = 'Not Detected';
             detectionStatus[traitCategory] = 'not_detected';
             confidenceScores[traitCategory] = result?.confidence || 0;
           }
@@ -177,7 +172,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
     if (!result) return;
 
     const feedbackKey = `${imageIndex}-${category}`;
-    const detectedValue = result.detectedTraits[category] || 'Not Detected';
 
     if (isCorrect) {
       // Positive feedback
@@ -310,12 +304,12 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
           </CardHeader>
           <CardContent className="space-y-6">
             {results.map((result, index) => (
-              <div key={index} className="space-y-3 p-4 bg-slate-800/30 rounded-lg">
+              <div key={index} className="space-y-4 p-4 bg-slate-800/30 rounded-lg">
                 <div className="flex items-start gap-4">
                   <img src={result.imageUrl} alt="Detected" className="w-24 h-24 rounded-md object-cover" />
                   <div className="flex-1">
-                    <h4 className="text-white font-medium mb-2">{result.fileName}</h4>
-                    <div className="space-y-3">
+                    <h4 className="text-white font-medium mb-3">{result.fileName}</h4>
+                    <div className="grid gap-4">
                       {Object.entries(trainedTraits).map(([category, values]) => {
                         const feedbackKey = `${index}-${category}`;
                         const detectedValue = result.detectedTraits[category] || 'Not Detected';
@@ -323,18 +317,26 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                         const feedbackValue = feedback[feedbackKey];
                         
                         return (
-                          <div key={category} className="space-y-2 p-3 bg-slate-700/50 rounded-lg">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <Label className="text-white font-medium">{category}</Label>
-                                <div className="text-slate-300 text-sm">
-                                  Detected: <span className="font-medium">{detectedValue}</span>
+                          <div key={category} className="p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Label className="text-white font-medium text-sm">{category}:</Label>
+                                  <Badge variant="secondary" className="bg-blue-600 text-white">
+                                    {detectedValue}
+                                  </Badge>
                                   {confidence > 0 && (
-                                    <span className="ml-2 text-slate-400">
-                                      ({Math.round(confidence * 100)}% confidence)
+                                    <span className="text-slate-400 text-xs">
+                                      {Math.round(confidence * 100)}%
                                     </span>
                                   )}
                                 </div>
+                                {result.detectionStatus[category] === 'not_detected' && confidence > 0.5 && (
+                                  <div className="text-yellow-400 text-xs flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Low confidence
+                                  </div>
+                                )}
                               </div>
                               <div className="flex gap-2">
                                 <Button
@@ -365,7 +367,7 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                                   placeholder="Enter correct value"
                                   value={correctionInputs[feedbackKey] || ''}
                                   onChange={(e) => handleCorrectionInputChange(index, category, e.target.value)}
-                                  className="bg-slate-600 border-slate-500 text-white"
+                                  className="bg-slate-600 border-slate-500 text-white text-sm"
                                 />
                                 <Button
                                   size="sm"
@@ -374,13 +376,6 @@ const ModelTester = ({ trainedTraits }: ModelTesterProps) => {
                                 >
                                   Submit
                                 </Button>
-                              </div>
-                            )}
-                            
-                            {result.detectionStatus[category] === 'not_detected' && confidence > 0.6 && (
-                              <div className="text-yellow-400 text-sm flex items-center gap-1">
-                                <AlertTriangle className="w-4 h-4" />
-                                Low confidence detection
                               </div>
                             )}
                           </div>
