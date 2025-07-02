@@ -6,9 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
+import { findClosestLabel, resolveTraitConflicts, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
 import EditableMetadataCard from './EditableMetadataCard';
 import { enhancedDetector } from '@/utils/enhancedDetection';
+
+interface TrainingExample {
+  embedding: any;
+  fileName: string;
+  imageUrl: string;
+}
 
 interface TraitClassifierProps {
   uploadedImages: File[];
@@ -43,10 +49,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     try {
       await loadModel();
       
-      // Update adaptive thresholds based on training data
+      // Update adaptive thresholds based on training data - fix TypeScript error
       console.log('🔧 Updating adaptive thresholds for all categories...');
       for (const [category, values] of Object.entries(trainedTraits)) {
-        const allExamples = Object.values(values as any).flat();
+        const allExamples = Object.values(values as { [key: string]: TrainingExample[] }).flat();
         enhancedDetector.updateAdaptiveThresholds(category, allExamples);
       }
       
@@ -80,11 +86,11 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const detectionStatus: any = {};
         const feedbackApplied: any = {};
         
-        // UNIFIED DETECTION: Use ONLY enhancedDetector (no fallback to basic detection)
+        // UNIFIED DETECTION: Use enhanced detector with feedback integration
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          console.log(`🎯 Enhanced detection for ${traitCategory} on ${file.name}`);
+          console.log(`🎯 UNIFIED enhanced detection for ${traitCategory} on ${file.name}`);
           
-          const result = enhancedDetector.enhancedDetection(embedding, traitValues as any, traitCategory);
+          const result = findClosestLabel(embedding, traitValues as any, traitCategory);
           
           if (result && result.label !== 'Not Detected') {
             detectedTraits[traitCategory] = result.label;
@@ -92,7 +98,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             detectionStatus[traitCategory] = 'detected';
             
             // Track if this detection was feedback-enhanced
-            if (result.confidence > 0.90 && result.consistencyScore >= 0.95) {
+            if (result.confidence > 0.90) {
               feedbackApplied[traitCategory] = true;
               console.log(`✅ ${traitCategory}: ${result.label} (${Math.round(result.confidence * 100)}% confidence) [FEEDBACK ENHANCED]`);
             } else {
@@ -105,10 +111,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           }
         }
 
+        // Apply conflict resolution
+        const resolvedTraits = resolveTraitConflicts(detectedTraits);
+
         embedding.dispose();
 
-        // Create attributes array only from detected traits
-        const attributes = Object.entries(detectedTraits).map(([trait_type, value]) => ({
+        // Create attributes array from resolved traits
+        const attributes = Object.entries(resolvedTraits).map(([trait_type, value]) => ({
           trait_type,
           value: value as string,
           confidence: confidenceScores[trait_type],
@@ -130,7 +139,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           feedbackApplied,
           allTraitAnalysis: Object.entries(trainedTraits).map(([trait_type, values]: [string, any]) => ({
             trait_type,
-            value: detectedTraits[trait_type] || 'Not Detected',
+            value: resolvedTraits[trait_type] || 'Not Detected',
             confidence: confidenceScores[trait_type] || 0,
             status: detectionStatus[trait_type] || 'not_detected',
             rarity: "0%",
