@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Play, Eye, BarChart3, CheckCircle, AlertTriangle } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { findClosestLabel, resolveTraitConflicts, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
+import { resolveTraitConflicts, calculateTraitRarity, analyzeTrainingData } from '@/utils/traitUtils';
 import EditableMetadataCard from './EditableMetadataCard';
 import { enhancedDetector } from '@/utils/enhancedDetection';
 
@@ -49,7 +49,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     try {
       await loadModel();
       
-      // Update adaptive thresholds based on training data - fix TypeScript error
+      // Update adaptive thresholds based on training data
       console.log('🔧 Updating adaptive thresholds for all categories...');
       for (const [category, values] of Object.entries(trainedTraits)) {
         const allExamples = Object.values(values as { [key: string]: TrainingExample[] }).flat();
@@ -69,7 +69,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality. ${totalFeedback} feedback corrections active.`
       });
 
-      console.log('🚀 Starting UNIFIED detection pipeline with feedback integration');
+      console.log('🚀 Starting enhanced detection pipeline with feedback integration');
       console.log('📊 Training quality:', trainingAnalysis.qualityScore.toFixed(2));
       console.log('🎯 Active feedback corrections:', feedbackStats);
 
@@ -86,11 +86,11 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const detectionStatus: any = {};
         const feedbackApplied: any = {};
         
-        // UNIFIED DETECTION: Use enhanced detector with feedback integration
+        // Use enhanced detector directly (this is what was working before)
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          console.log(`🎯 UNIFIED enhanced detection for ${traitCategory} on ${file.name}`);
+          console.log(`🎯 Enhanced detection for ${traitCategory} on ${file.name}`);
           
-          const result = findClosestLabel(embedding, traitValues as any, traitCategory);
+          const result = enhancedDetector.enhancedDetection(embedding, traitValues as any, traitCategory);
           
           if (result && result.label !== 'Not Detected') {
             detectedTraits[traitCategory] = result.label;
@@ -125,15 +125,15 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           feedbackEnhanced: feedbackApplied[trait_type] || false
         }));
 
-        // Enhanced metadata generation with unified detection tracking
+        // Enhanced metadata generation with detection tracking
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with unified feedback-enhanced detection",
+          description: "AI-generated NFT with feedback-enhanced detection",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          collectionName: "Unified Enhanced AI Collection",
-          collectionDescription: "Generated with Unified Feedback-Enhanced Detection Pipeline",
+          collectionName: "Enhanced AI Collection",
+          collectionDescription: "Generated with Feedback-Enhanced Detection Pipeline",
           attributes,
           confidenceScores,
           feedbackApplied,
@@ -192,20 +192,20 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         sum + item.attributes.filter((attr: any) => attr.feedbackEnhanced).length, 0
       );
       
-      console.log('📊 UNIFIED DETECTION COMPLETE:');
+      console.log('📊 DETECTION COMPLETE:');
       console.log(`   Detection Rate: ${detectionRate}%`);
       console.log(`   Feedback Enhanced: ${feedbackEnhancedCount} detections`);
       console.log(`   Total Processed: ${uploadedImages.length} images`);
       
       toast({
-        title: "🎉 Unified Analysis Complete!",
+        title: "🎉 Analysis Complete!",
         description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% rate). ${feedbackEnhancedCount} feedback-enhanced results.`
       });
     } catch (error) {
-      console.error('Unified classification failed:', error);
+      console.error('Classification failed:', error);
       toast({
         title: "Classification failed",
-        description: "Error during unified trait detection",
+        description: "Error during trait detection",
         variant: "destructive"
       });
       setCurrentPhase('idle');
@@ -268,13 +268,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   function getPhaseDescription() {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running unified feedback-enhanced AI analysis...';
+        return 'Running feedback-enhanced AI analysis...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Unified feedback-enhanced analysis complete!';
+        return 'Feedback-enhanced analysis complete!';
       default:
-        return 'Ready to start unified enhanced analysis';
+        return 'Ready to start enhanced analysis';
     }
   }
 
@@ -284,15 +284,15 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
   return (
     <div className="space-y-6">
-      {/* Unified Enhanced Analysis Notice */}
-      <Card className="bg-gradient-to-r from-blue-900/20 to-green-900/20 border-blue-600">
+      {/* Enhanced Analysis Notice - FIXED STYLING */}
+      <Card className="bg-slate-700/30 border-slate-600">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-blue-200 font-medium">🎯 Unified Feedback-Enhanced Detection</h4>
-              <div className="text-sm text-blue-200 space-y-1">
-                <p><strong>Unified Pipeline:</strong> Single detection system with integrated feedback</p>
+              <h4 className="text-white font-medium">🎯 Feedback-Enhanced Detection</h4>
+              <div className="text-sm text-slate-300 space-y-1">
+                <p><strong>Enhanced Pipeline:</strong> AI detection with integrated feedback learning</p>
                 <p><strong>Adaptive Thresholds:</strong> AI adjusts detection sensitivity based on training quality</p>
                 <p><strong>Active Memory:</strong> {totalFeedback} user corrections applied automatically</p>
                 <p><strong>Real-time Learning:</strong> Each feedback immediately improves future detections</p>
@@ -311,13 +311,14 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-blue-400" />
-            🎯 Unified Enhanced Detection
+            🎯 Enhanced Detection
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Single pipeline with integrated feedback learning and adaptive thresholds
+            AI trait detection with integrated feedback learning and adaptive thresholds
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Grid layout */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{uploadedImages.length}</div>
@@ -350,7 +351,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Unified Analysis...' : '🎯 Start Unified Enhanced Detection'}
+            {classifying ? 'Running Feedback-Enhanced Analysis...' : '🎯 Start Feedback-Enhanced Detection'}
           </Button>
         </CardContent>
       </Card>
@@ -361,10 +362,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-400" />
-              Unified Detection Results
+              Enhanced Detection Results
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Review unified feedback-enhanced AI predictions with integrated learning
+              Review feedback-enhanced AI predictions with integrated learning
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -417,10 +418,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-400" />
-              Unified Collection Statistics
+              Enhanced Collection Statistics
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Trait distribution with unified feedback enhancement tracking
+              Trait distribution with feedback enhancement tracking
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -451,7 +452,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
                           <div>Count: {stats.count} ({((stats.count / results.length) * 100).toFixed(1)}%)</div>
                           <div>Avg Confidence: {Math.round(stats.avgConfidence * 100)}%</div>
                           {stats.feedbackEnhanced > 0 && (
-                            <div className="text-green-400">🎯 Unified Enhanced: {stats.feedbackEnhanced}</div>
+                            <div className="text-green-400">🎯 Feedback Enhanced: {stats.feedbackEnhanced}</div>
                           )}
                           <div className="text-xs text-slate-500">
                             Quality: {stats.avgConfidence >= 0.85 ? 'Excellent' : stats.avgConfidence >= 0.75 ? 'Good' : 'Fair'}
