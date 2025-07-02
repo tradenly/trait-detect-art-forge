@@ -1,4 +1,3 @@
-
 import { enhancedDetector } from './enhancedDetection';
 import * as tf from '@tensorflow/tfjs';
 
@@ -44,41 +43,125 @@ export function findClosestLabel(
   };
 }
 
-// Simplified conflict resolution - now handled by unified detection
+// Enhanced conflict resolution with strict mutual exclusion rules
 export function resolveTraitConflicts(detectedTraits: { [key: string]: any }): { [key: string]: any } {
   const resolved = { ...detectedTraits };
   
-  // Minimal conflict resolution since unified detection handles most conflicts
-  const conflicts = [
-    ['shorts', 'pants'],
-    ['shirt', 'no_shirt'], 
-    ['hat', 'no_hat']
+  console.log('🔧 Starting enhanced conflict resolution...');
+  console.log('🔍 Input traits:', Object.keys(resolved));
+  
+  // Define strict mutual exclusion groups
+  const mutuallyExclusiveGroups = [
+    {
+      name: 'lower_body',
+      traits: ['shorts', 'pants', 'skirt', 'dress'],
+      description: 'Only one lower body garment allowed'
+    },
+    {
+      name: 'upper_body',
+      traits: ['shirt', 'tank_top', 'hoodie', 'jacket'],
+      description: 'Only one primary upper body garment allowed'
+    },
+    {
+      name: 'headwear',
+      traits: ['hat', 'cap', 'beanie', 'helmet'],
+      description: 'Only one headwear item allowed'
+    }
   ];
   
-  for (const [trait1, trait2] of conflicts) {
-    const trait1Keys = Object.keys(resolved).filter(key => 
-      key.toLowerCase().includes(trait1)
-    );
-    const trait2Keys = Object.keys(resolved).filter(key => 
-      key.toLowerCase().includes(trait2)
-    );
+  // Process each mutual exclusion group
+  for (const group of mutuallyExclusiveGroups) {
+    const conflictingTraits: Array<{key: string, confidence: number, trait: string}> = [];
     
-    if (trait1Keys.length > 0 && trait2Keys.length > 0) {
-      const trait1Confidence = Math.max(...trait1Keys.map(key => resolved[key].confidence || 0));
-      const trait2Confidence = Math.max(...trait2Keys.map(key => resolved[key].confidence || 0));
-      
-      // Only resolve significant confidence differences (unified approach)
-      if (Math.abs(trait1Confidence - trait2Confidence) > 0.15) {
-        if (trait1Confidence > trait2Confidence) {
-          trait2Keys.forEach(key => delete resolved[key]);
-          console.log(`🔧 Unified conflict resolved: Kept ${trait1} (${trait1Confidence.toFixed(3)}) over ${trait2} (${trait2Confidence.toFixed(3)})`);
-        } else {
-          trait1Keys.forEach(key => delete resolved[key]);
-          console.log(`🔧 Unified conflict resolved: Kept ${trait2} (${trait2Confidence.toFixed(3)}) over ${trait1} (${trait1Confidence.toFixed(3)})`);
+    // Find all traits in this group that were detected
+    for (const [traitKey, traitValue] of Object.entries(resolved)) {
+      for (const groupTrait of group.traits) {
+        if (traitKey.toLowerCase().includes(groupTrait) || 
+            (typeof traitValue === 'string' && traitValue.toLowerCase().includes(groupTrait))) {
+          
+          // Get confidence from confidenceScores if available, otherwise estimate
+          const confidence = resolved.confidenceScores?.[traitKey] || 0.5;
+          conflictingTraits.push({
+            key: traitKey,
+            confidence: confidence,
+            trait: groupTrait
+          });
         }
       }
     }
+    
+    // If we have conflicts in this group, resolve them
+    if (conflictingTraits.length > 1) {
+      console.log(`⚠️ CONFLICT in ${group.name}: Found ${conflictingTraits.length} conflicting traits`);
+      conflictingTraits.forEach(item => {
+        console.log(`   - ${item.key}: ${item.trait} (confidence: ${item.confidence.toFixed(3)})`);
+      });
+      
+      // Sort by confidence and keep only the highest confidence trait
+      conflictingTraits.sort((a, b) => b.confidence - a.confidence);
+      const winner = conflictingTraits[0];
+      const losers = conflictingTraits.slice(1);
+      
+      // Remove the losing traits
+      losers.forEach(loser => {
+        console.log(`❌ REMOVING conflicting trait: ${loser.key} (${loser.confidence.toFixed(3)}) - lost to ${winner.key} (${winner.confidence.toFixed(3)})`);
+        delete resolved[loser.key];
+      });
+      
+      console.log(`✅ CONFLICT RESOLVED: Kept ${winner.key} as winner in ${group.name} group`);
+    }
   }
+  
+  // Additional specific conflict rules
+  const specificConflicts = [
+    // Shorts vs Pants - most common conflict
+    {
+      check: () => {
+        const shortsKeys = Object.keys(resolved).filter(key => 
+          key.toLowerCase().includes('shorts') || 
+          (typeof resolved[key] === 'string' && resolved[key].toLowerCase().includes('shorts'))
+        );
+        const pantsKeys = Object.keys(resolved).filter(key => 
+          key.toLowerCase().includes('pants') || 
+          (typeof resolved[key] === 'string' && resolved[key].toLowerCase().includes('pants'))
+        );
+        return { shortsKeys, pantsKeys };
+      },
+      resolve: () => {
+        const { shortsKeys, pantsKeys } = specificConflicts[0].check();
+        if (shortsKeys.length > 0 && pantsKeys.length > 0) {
+          const shortsConf = Math.max(...shortsKeys.map(key => resolved.confidenceScores?.[key] || 0.5));
+          const pantsConf = Math.max(...pantsKeys.map(key => resolved.confidenceScores?.[key] || 0.5));
+          
+          console.log(`⚠️ SPECIFIC CONFLICT: Shorts vs Pants - shorts: ${shortsConf.toFixed(3)}, pants: ${pantsConf.toFixed(3)}`);
+          
+          if (Math.abs(shortsConf - pantsConf) > 0.1) {
+            if (shortsConf > pantsConf) {
+              pantsKeys.forEach(key => {
+                console.log(`❌ REMOVING pants trait: ${key} (lost to shorts)`);
+                delete resolved[key];
+              });
+            } else {
+              shortsKeys.forEach(key => {
+                console.log(`❌ REMOVING shorts trait: ${key} (lost to pants)`);
+                delete resolved[key];
+              });
+            }
+          } else {
+            // If confidence is too close, remove both to avoid false positives
+            console.log(`❌ REMOVING BOTH shorts and pants (confidence too close - likely false positive)`);
+            [...shortsKeys, ...pantsKeys].forEach(key => delete resolved[key]);
+          }
+        }
+      }
+    }
+  ];
+  
+  // Apply specific conflict resolution
+  specificConflicts.forEach(conflict => conflict.resolve());
+  
+  console.log('✅ Conflict resolution complete');
+  console.log('🔍 Final traits:', Object.keys(resolved));
   
   return resolved;
 }
@@ -112,6 +195,77 @@ export function getTraitStatistics(metadata: any[]) {
   return stats;
 }
 
+// Smart feedback processing - distinguish between corrections and instructions
+export function processFeedbackInput(input: string, detectedValue: string, category: string): {
+  isInstruction: boolean;
+  cleanedValue: string;
+  shouldApplyToMetadata: boolean;
+} {
+  const inputLower = input.toLowerCase().trim();
+  const detectedLower = detectedValue.toLowerCase();
+  
+  // Instruction patterns that should NOT appear in metadata
+  const instructionPatterns = [
+    /^no\s+\w+\s+in\s+(this\s+)?image/,
+    /^not\s+detected/,
+    /^none\s+present/,
+    /^incorrect\s+detection/,
+    /^wrong\s+detection/,
+    /^should\s+not\s+be/,
+    /^remove\s+this/,
+    /^delete\s+this/,
+    /^false\s+positive/,
+    /^ai\s+detected.*wrong/,
+    /^both.*detected.*wrong/,
+    /contains.*sentence/,
+    /^this\s+is\s+wrong/
+  ];
+  
+  // Check if input is an instruction rather than a trait value
+  const isInstruction = instructionPatterns.some(pattern => pattern.test(inputLower));
+  
+  // If it's an instruction, don't put it in metadata
+  if (isInstruction) {
+    console.log(`📝 INSTRUCTION DETECTED: "${input}" - will not appear in metadata`);
+    return {
+      isInstruction: true,
+      cleanedValue: input, // Keep original for AI learning
+      shouldApplyToMetadata: false
+    };
+  }
+  
+  // For simple color/trait corrections, clean and apply to metadata
+  const colorWords = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'purple', 'orange', 'pink', 'brown', 'gray', 'grey'];
+  const isSimpleCorrection = colorWords.some(color => inputLower.includes(color)) && inputLower.split(' ').length <= 3;
+  
+  if (isSimpleCorrection) {
+    console.log(`🎨 COLOR CORRECTION: "${input}" - will appear in metadata`);
+    return {
+      isInstruction: false,
+      cleanedValue: input.trim(),
+      shouldApplyToMetadata: true
+    };
+  }
+  
+  // For other short corrections (likely trait values)
+  if (input.length < 20 && !inputLower.includes('image') && !inputLower.includes('detected')) {
+    console.log(`✏️ TRAIT CORRECTION: "${input}" - will appear in metadata`);
+    return {
+      isInstruction: false,
+      cleanedValue: input.trim(),
+      shouldApplyToMetadata: true
+    };
+  }
+  
+  // Default to instruction for longer or complex inputs
+  console.log(`📝 COMPLEX INPUT TREATED AS INSTRUCTION: "${input}" - will not appear in metadata`);
+  return {
+    isInstruction: true,
+    cleanedValue: input,
+    shouldApplyToMetadata: false
+  };
+}
+
 // Enhanced validation with unified detection metrics
 export function validateDetectionResults(results: any[]): { 
   accuracy: number; 
@@ -119,6 +273,7 @@ export function validateDetectionResults(results: any[]): {
   recommendations: string[];
   detectionRate: number;
   consistencyScore: number;
+  conflictRate: number;
 } {
   const recommendations: string[] = [];
   let lowConfidenceCount = 0;
@@ -126,10 +281,19 @@ export function validateDetectionResults(results: any[]): {
   let totalPredictions = 0;
   let detectedTraits = 0;
   let totalPossibleTraits = 0;
+  let conflicts = 0;
   
   const confidenceScores: number[] = [];
   
   results.forEach(result => {
+    // Check for conflicts in this result
+    const traits = Object.keys(result.detectedTraits || {});
+    const hasConflict = (
+      traits.some(t => t.toLowerCase().includes('shorts')) && 
+      traits.some(t => t.toLowerCase().includes('pants'))
+    );
+    if (hasConflict) conflicts++;
+    
     Object.values(result.confidenceScores || {}).forEach((confidence: any) => {
       totalConfidence += confidence;
       totalPredictions++;
@@ -148,6 +312,7 @@ export function validateDetectionResults(results: any[]): {
   
   const accuracy = totalPredictions > 0 ? totalConfidence / totalPredictions : 0;
   const detectionRate = totalPossibleTraits > 0 ? detectedTraits / totalPossibleTraits : 0;
+  const conflictRate = results.length > 0 ? conflicts / results.length : 0;
   
   const avgConfidence = confidenceScores.length > 0 ? 
     confidenceScores.reduce((sum, conf) => sum + conf, 0) / confidenceScores.length : 0;
@@ -168,6 +333,10 @@ export function validateDetectionResults(results: any[]): {
     recommendations.push('Inconsistent predictions. Review training data quality and provide user feedback.');
   }
   
+  if (conflictRate > 0.1) {
+    recommendations.push('High conflict rate detected. Improve training data separation between mutually exclusive traits.');
+  }
+  
   if (lowConfidenceCount > totalPredictions * 0.6) {
     recommendations.push('Many low-confidence predictions. Add clear training examples and use feedback system.');
   }
@@ -177,7 +346,8 @@ export function validateDetectionResults(results: any[]): {
     lowConfidenceCount,
     recommendations,
     detectionRate,
-    consistencyScore
+    consistencyScore,
+    conflictRate
   };
 }
 

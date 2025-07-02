@@ -49,8 +49,8 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
     try {
       await loadModel();
       
-      // Update adaptive thresholds based on training data
-      console.log('🔧 Updating adaptive thresholds for all categories...');
+      // Update enhanced adaptive thresholds based on training data
+      console.log('🔧 Updating enhanced adaptive thresholds for all categories...');
       for (const [category, values] of Object.entries(trainedTraits)) {
         const allExamples = Object.values(values as { [key: string]: TrainingExample[] }).flat();
         enhancedDetector.updateAdaptiveThresholds(category, allExamples);
@@ -66,12 +66,12 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       
       toast({
         title: "🎯 Enhanced AI Analysis Starting",
-        description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality. ${totalFeedback} feedback corrections active.`
+        description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality. ${totalFeedback} smart corrections active.`
       });
 
-      console.log('🚀 Starting enhanced detection pipeline with feedback integration');
+      console.log('🚀 Starting ENHANCED detection pipeline with smart feedback integration');
       console.log('📊 Training quality:', trainingAnalysis.qualityScore.toFixed(2));
-      console.log('🎯 Active feedback corrections:', feedbackStats);
+      console.log('🎯 Active smart feedback corrections:', feedbackStats);
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
@@ -86,7 +86,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const detectionStatus: any = {};
         const feedbackApplied: any = {};
         
-        // Use enhanced detector directly (this is what was working before)
+        // Use enhanced detector with smart feedback integration
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Enhanced detection for ${traitCategory} on ${file.name}`);
           
@@ -111,8 +111,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           }
         }
 
-        // Apply conflict resolution
+        // Apply ENHANCED conflict resolution with strict mutual exclusion
+        console.log('🔧 Applying enhanced conflict resolution...');
         const resolvedTraits = resolveTraitConflicts(detectedTraits);
+        console.log('✅ Conflict resolution complete');
 
         embedding.dispose();
 
@@ -125,18 +127,19 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           feedbackEnhanced: feedbackApplied[trait_type] || false
         }));
 
-        // Enhanced metadata generation with detection tracking
+        // Enhanced metadata generation with conflict tracking
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with feedback-enhanced detection",
+          description: "AI-generated NFT with enhanced conflict-free detection",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          collectionName: "Enhanced AI Collection",
-          collectionDescription: "Generated with Feedback-Enhanced Detection Pipeline",
+          collectionName: "Enhanced Conflict-Free AI Collection",
+          collectionDescription: "Generated with Enhanced Detection and Smart Conflict Resolution",
           attributes,
           confidenceScores,
           feedbackApplied,
+          conflictsResolved: Object.keys(detectedTraits).length - Object.keys(resolvedTraits).length,
           allTraitAnalysis: Object.entries(trainedTraits).map(([trait_type, values]: [string, any]) => ({
             trait_type,
             value: resolvedTraits[trait_type] || 'Not Detected',
@@ -144,7 +147,8 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             status: detectionStatus[trait_type] || 'not_detected',
             rarity: "0%",
             isDetected: detectionStatus[trait_type] === 'detected',
-            feedbackEnhanced: feedbackApplied[trait_type] || false
+            feedbackEnhanced: feedbackApplied[trait_type] || false,
+            wasConflicted: detectedTraits[trait_type] && !resolvedTraits[trait_type]
           }))
         };
 
@@ -184,22 +188,24 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       setResults(metadataArray);
       setCurrentPhase('complete');
       
-      // Enhanced completion metrics
+      // Enhanced completion metrics with conflict tracking
       const detectedCount = metadataArray.reduce((sum, item) => sum + item.attributes.length, 0);
       const totalAnalyzed = metadataArray.length * Object.keys(trainedTraits).length;
       const detectionRate = ((detectedCount / totalAnalyzed) * 100).toFixed(1);
       const feedbackEnhancedCount = metadataArray.reduce((sum, item) => 
         sum + item.attributes.filter((attr: any) => attr.feedbackEnhanced).length, 0
       );
+      const totalConflictsResolved = metadataArray.reduce((sum, item) => sum + (item.conflictsResolved || 0), 0);
       
-      console.log('📊 DETECTION COMPLETE:');
+      console.log('📊 ENHANCED DETECTION COMPLETE:');
       console.log(`   Detection Rate: ${detectionRate}%`);
       console.log(`   Feedback Enhanced: ${feedbackEnhancedCount} detections`);
+      console.log(`   Conflicts Resolved: ${totalConflictsResolved}`);
       console.log(`   Total Processed: ${uploadedImages.length} images`);
       
       toast({
-        title: "🎉 Analysis Complete!",
-        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% rate). ${feedbackEnhancedCount} feedback-enhanced results.`
+        title: "🎉 Enhanced Analysis Complete!",
+        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% rate). ${feedbackEnhancedCount} feedback-enhanced. ${totalConflictsResolved} conflicts resolved.`
       });
     } catch (error) {
       console.error('Classification failed:', error);
@@ -268,11 +274,11 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   function getPhaseDescription() {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running feedback-enhanced AI analysis...';
+        return 'Running enhanced conflict-free AI analysis...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Feedback-enhanced analysis complete!';
+        return 'Enhanced conflict-free analysis complete!';
       default:
         return 'Ready to start enhanced analysis';
     }
@@ -284,22 +290,22 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Analysis Notice - FIXED STYLING */}
+      {/* Enhanced Analysis Notice */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-white font-medium">🎯 Feedback-Enhanced Detection</h4>
+              <h4 className="text-white font-medium">🎯 Enhanced Conflict-Free Detection</h4>
               <div className="text-sm text-slate-300 space-y-1">
-                <p><strong>Enhanced Pipeline:</strong> AI detection with integrated feedback learning</p>
-                <p><strong>Adaptive Thresholds:</strong> AI adjusts detection sensitivity based on training quality</p>
-                <p><strong>Active Memory:</strong> {totalFeedback} user corrections applied automatically</p>
-                <p><strong>Real-time Learning:</strong> Each feedback immediately improves future detections</p>
+                <p><strong>Smart Pipeline:</strong> AI detection with conflict resolution and intelligent feedback</p>
+                <p><strong>Conflict Prevention:</strong> Eliminates impossible combinations (shorts + pants)</p>
+                <p><strong>Smart Feedback:</strong> Distinguishes corrections from instructions automatically</p>
+                <p><strong>Active Memory:</strong> {totalFeedback} smart corrections applied automatically</p>
               </div>
               {totalFeedback > 0 && (
                 <div className="text-xs text-green-300 mt-2 p-2 bg-green-900/20 rounded">
-                  🧠 Active corrections: {Object.entries(feedbackStats).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
+                  🧠 Smart corrections: {Object.entries(feedbackStats).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
                 </div>
               )}
             </div>
@@ -314,7 +320,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             🎯 Enhanced Detection
           </CardTitle>
           <CardDescription className="text-slate-400">
-            AI trait detection with integrated feedback learning and adaptive thresholds
+            AI trait detection with conflict resolution and integrated feedback learning and adaptive thresholds
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -351,7 +357,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Feedback-Enhanced Analysis...' : '🎯 Start Feedback-Enhanced Detection'}
+            {classifying ? 'Running Enhanced Conflict-Free Analysis...' : '🎯 Start Enhanced Conflict-Free Detection'}
           </Button>
         </CardContent>
       </Card>
