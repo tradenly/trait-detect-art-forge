@@ -15,150 +15,40 @@ interface DetectionResult {
   individualScores: number[];
 }
 
+// UNIFIED DETECTION: Only use enhanced detector, remove basic detection fallback
 export function findClosestLabel(
   targetEmbedding: tf.Tensor, 
   labelEmbeddings: { [key: string]: TrainingExample[] },
   category?: string
 ): DetectionResult | null {
   if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
-    console.log('❌ Invalid inputs for detection');
+    console.log('❌ Invalid inputs for unified detection');
     return null;
   }
   
-  // Use stricter basic detection - enhanced detection was too permissive
-  return basicDetection(targetEmbedding, labelEmbeddings, category);
-}
-
-function basicDetection(
-  targetEmbedding: tf.Tensor, 
-  labelEmbeddings: { [key: string]: TrainingExample[] },
-  category?: string
-): DetectionResult | null {
-  let bestMatch = null;
-  let bestAvgSimilarity = -1;
-  let bestIndividualScores: number[] = [];
+  console.log(`🎯 UNIFIED findClosestLabel redirecting to enhancedDetector for ${category || 'unknown'}`);
   
-  console.log(`🔍 Detection for ${category || 'unknown'} with ${Object.keys(labelEmbeddings).length} labels`);
+  // UNIFIED: Always use enhanced detector with feedback integration
+  const enhancedResult = enhancedDetector.enhancedDetection(targetEmbedding, labelEmbeddings, category || 'unknown');
   
-  for (const [label, examples] of Object.entries(labelEmbeddings)) {
-    if (examples.length === 0) {
-      console.log(`⚠️ No examples for label: ${label}`);
-      continue;
-    }
-    
-    const similarities: number[] = [];
-    
-    for (const example of examples) {
-      const similarity = cosineSimilarity(targetEmbedding, example.embedding);
-      similarities.push(similarity);
-    }
-    
-    // Use more conservative scoring
-    const avgSim = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
-    const maxSim = Math.max(...similarities);
-    const minSim = Math.min(...similarities);
-    
-    // Consistency check - if similarities vary too much, it's not a good match
-    const variance = similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length;
-    const consistencyPenalty = Math.min(0.2, variance * 2); // Penalize inconsistent training data
-    
-    // Conservative composite score with consistency penalty
-    const compositeScore = (maxSim * 0.4 + avgSim * 0.6) - consistencyPenalty;
-    
-    console.log(`Label "${label}": avg=${avgSim.toFixed(3)}, max=${maxSim.toFixed(3)}, min=${minSim.toFixed(3)}, variance=${variance.toFixed(3)}, composite=${compositeScore.toFixed(3)}`);
-    
-    if (compositeScore > bestAvgSimilarity) {
-      bestAvgSimilarity = compositeScore;
-      bestMatch = label;
-      bestIndividualScores = similarities;
-    }
-  }
-  
-  if (!bestMatch) {
-    console.log('❌ No match found');
+  if (!enhancedResult) {
     return null;
   }
   
-  // Much stricter threshold - only accept very confident matches
-  const baseThreshold = 0.78; // Increased from 0.72
-  
-  // Adjust threshold based on training quality
-  const exampleCount = labelEmbeddings[bestMatch].length;
-  let threshold = baseThreshold;
-  
-  if (exampleCount < 3) {
-    threshold = 0.85; // Very high threshold for poorly trained labels
-  } else if (exampleCount < 5) {
-    threshold = 0.82; // High threshold for moderately trained labels
-  } else {
-    threshold = 0.78; // Standard threshold for well-trained labels
-  }
-  
-  console.log(`🎯 Best match: "${bestMatch}" score: ${bestAvgSimilarity.toFixed(3)}, threshold: ${threshold.toFixed(3)}`);
-  
-  if (bestAvgSimilarity >= threshold) {
-    console.log(`✅ ACCEPTED: "${bestMatch}" confidence: ${bestAvgSimilarity.toFixed(3)}`);
-    
-    return {
-      label: bestMatch,
-      confidence: bestAvgSimilarity,
-      avgSimilarity: bestAvgSimilarity,
-      individualScores: bestIndividualScores
-    };
-  }
-  
-  console.log(`❌ REJECTED: "${bestMatch}" score ${bestAvgSimilarity.toFixed(3)} < threshold ${threshold.toFixed(3)}`);
+  // Convert enhanced result to legacy format for compatibility
   return {
-    label: 'Not Detected',
-    confidence: bestAvgSimilarity,
-    avgSimilarity: bestAvgSimilarity,
-    individualScores: bestIndividualScores
+    label: enhancedResult.label,
+    confidence: enhancedResult.confidence,
+    avgSimilarity: enhancedResult.similarity,
+    individualScores: [enhancedResult.similarity] // Simplified for compatibility
   };
 }
 
-function cosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
-  if (!a || !b) {
-    console.warn('Null tensor provided to cosineSimilarity');
-    return 0;
-  }
-  
-  const aFlat = a.flatten();
-  const bFlat = b.flatten();
-  
-  if (aFlat.shape[0] !== bFlat.shape[0]) {
-    console.warn('Tensor shape mismatch:', aFlat.shape, bFlat.shape);
-    aFlat.dispose();
-    bFlat.dispose();
-    return 0;
-  }
-  
-  const dotProduct = tf.sum(tf.mul(aFlat, bFlat));
-  const normA = tf.norm(aFlat);
-  const normB = tf.norm(bFlat);
-  
-  const epsilon = 1e-8;
-  const similarity = tf.div(
-    dotProduct, 
-    tf.maximum(tf.mul(normA, normB), epsilon)
-  );
-  
-  const result = similarity.dataSync()[0];
-  
-  dotProduct.dispose();
-  normA.dispose();
-  normB.dispose();
-  similarity.dispose();
-  aFlat.dispose();
-  bFlat.dispose();
-  
-  return isNaN(result) ? 0 : Math.max(0, Math.min(1, result));
-}
-
-// Simplified conflict resolution - be more conservative
+// Simplified conflict resolution - now handled by unified detection
 export function resolveTraitConflicts(detectedTraits: { [key: string]: any }): { [key: string]: any } {
   const resolved = { ...detectedTraits };
   
-  // Only resolve clear conflicts with significant confidence differences
+  // Minimal conflict resolution since unified detection handles most conflicts
   const conflicts = [
     ['shorts', 'pants'],
     ['shirt', 'no_shirt'], 
@@ -177,14 +67,14 @@ export function resolveTraitConflicts(detectedTraits: { [key: string]: any }): {
       const trait1Confidence = Math.max(...trait1Keys.map(key => resolved[key].confidence || 0));
       const trait2Confidence = Math.max(...trait2Keys.map(key => resolved[key].confidence || 0));
       
-      // Only resolve if there's a significant confidence difference (>0.1)
-      if (Math.abs(trait1Confidence - trait2Confidence) > 0.1) {
+      // Only resolve significant confidence differences (unified approach)
+      if (Math.abs(trait1Confidence - trait2Confidence) > 0.15) {
         if (trait1Confidence > trait2Confidence) {
           trait2Keys.forEach(key => delete resolved[key]);
-          console.log(`Conflict resolved: Kept ${trait1} (${trait1Confidence.toFixed(3)}) over ${trait2} (${trait2Confidence.toFixed(3)})`);
+          console.log(`🔧 Unified conflict resolved: Kept ${trait1} (${trait1Confidence.toFixed(3)}) over ${trait2} (${trait2Confidence.toFixed(3)})`);
         } else {
           trait1Keys.forEach(key => delete resolved[key]);
-          console.log(`Conflict resolved: Kept ${trait2} (${trait2Confidence.toFixed(3)}) over ${trait1} (${trait1Confidence.toFixed(3)})`);
+          console.log(`🔧 Unified conflict resolved: Kept ${trait2} (${trait2Confidence.toFixed(3)}) over ${trait1} (${trait1Confidence.toFixed(3)})`);
         }
       }
     }
@@ -222,7 +112,7 @@ export function getTraitStatistics(metadata: any[]) {
   return stats;
 }
 
-// Improved validation with stricter criteria
+// Enhanced validation with unified detection metrics
 export function validateDetectionResults(results: any[]): { 
   accuracy: number; 
   lowConfidenceCount: number; 
@@ -245,7 +135,8 @@ export function validateDetectionResults(results: any[]): {
       totalPredictions++;
       confidenceScores.push(confidence);
       
-      if (confidence < 0.78) { // Updated threshold
+      // Updated threshold to match unified system
+      if (confidence < 0.75) { 
         lowConfidenceCount++;
       } else {
         detectedTraits++;
@@ -264,20 +155,21 @@ export function validateDetectionResults(results: any[]): {
     confidenceScores.reduce((sum, conf) => sum + Math.pow(conf - avgConfidence, 2), 0) / confidenceScores.length : 0;
   const consistencyScore = Math.max(0, 1 - Math.sqrt(variance));
   
-  if (accuracy < 0.78) {
+  // Updated recommendations for unified system
+  if (accuracy < 0.75) {
     recommendations.push('Overall accuracy is low. Add more diverse, high-quality training examples.');
   }
   
-  if (detectionRate < 0.4) {
-    recommendations.push('Low detection rate indicates overly strict thresholds or insufficient training data.');
+  if (detectionRate < 0.35) {
+    recommendations.push('Low detection rate. Consider reviewing training data quality or providing more feedback.');
   }
   
-  if (consistencyScore < 0.7) {
-    recommendations.push('Inconsistent predictions. Review training data quality and remove poor examples.');
+  if (consistencyScore < 0.65) {
+    recommendations.push('Inconsistent predictions. Review training data quality and provide user feedback.');
   }
   
   if (lowConfidenceCount > totalPredictions * 0.6) {
-    recommendations.push('Many low-confidence predictions. Focus on adding clear, unambiguous training examples.');
+    recommendations.push('Many low-confidence predictions. Add clear training examples and use feedback system.');
   }
   
   return {
@@ -289,7 +181,7 @@ export function validateDetectionResults(results: any[]): {
   };
 }
 
-// New utility for training data analysis
+// Enhanced training data analysis for unified system
 export function analyzeTrainingData(trainedTraits: any): {
   totalExamples: number;
   categoryCounts: { [key: string]: number };
@@ -312,18 +204,19 @@ export function analyzeTrainingData(trainedTraits: any): {
       categoryTotal += count;
       totalExamples += count;
       
-      // Quality scoring
+      // Enhanced quality scoring for unified system
       let valueQuality = 0;
       if (count >= 8) valueQuality = 1.0;
-      else if (count >= 5) valueQuality = 0.8;
-      else if (count >= 3) valueQuality = 0.6;
-      else valueQuality = 0.3;
+      else if (count >= 5) valueQuality = 0.85; // Higher score for moderate samples
+      else if (count >= 3) valueQuality = 0.65; // More lenient for unified system
+      else valueQuality = 0.35;
       
       categoryQuality += valueQuality;
       valueCount++;
       
+      // Updated recommendations for unified system
       if (count < 3) {
-        recommendations.push(`${category}: ${value} needs more examples (${count}/3 minimum)`);
+        recommendations.push(`${category}: ${value} needs more examples (${count}/3 minimum for unified system)`);
       }
     });
     
@@ -334,15 +227,17 @@ export function analyzeTrainingData(trainedTraits: any): {
       categoryCount++;
     }
     
-    if (categoryTotal < 15) {
-      recommendations.push(`${category} category needs more total examples (${categoryTotal}/15 recommended)`);
+    // Updated category recommendations
+    if (categoryTotal < 12) {
+      recommendations.push(`${category} category needs more examples (${categoryTotal}/12 recommended for unified system)`);
     }
   });
   
   const qualityScore = categoryCount > 0 ? qualityTotal / categoryCount : 0;
   
-  if (totalExamples < 50) {
-    recommendations.push('Add more training examples across all categories for better detection accuracy');
+  // Updated overall recommendations
+  if (totalExamples < 40) {
+    recommendations.push('Add more training examples across all categories for unified system optimization');
   }
   
   return {

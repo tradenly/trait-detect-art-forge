@@ -1,4 +1,3 @@
-
 import * as tf from '@tensorflow/tfjs';
 import { cosineSimilarity } from './embeddingUtils';
 
@@ -35,7 +34,7 @@ export class EnhancedDetector {
   }
 
   private initializeAdaptiveThresholds() {
-    // Initialize with balanced thresholds for better feedback integration
+    // Initialize with unified balanced thresholds
     this.adaptiveThresholds.set('default', 0.75);
   }
 
@@ -71,10 +70,10 @@ export class EnhancedDetector {
       const variance = similarities.length > 1 ? 
         similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length : 0;
 
-      // Balanced quality scoring that works well with feedback
-      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 1.5));
-      const sampleScore = Math.min(1, examples.length / 6);
-      const quality = (consistencyScore * 0.7 + sampleScore * 0.3);
+      // Unified quality scoring optimized for feedback integration
+      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 1.2));
+      const sampleScore = Math.min(1, examples.length / 5);
+      const quality = (consistencyScore * 0.6 + sampleScore * 0.4);
 
       categoryQuality.set(category, quality);
       this.categoryStats.set(category, { avgSimilarity: avgSim, variance: variance });
@@ -82,14 +81,14 @@ export class EnhancedDetector {
       totalQuality += quality;
       categoryCount++;
 
-      // Practical recommendations
+      // Unified recommendations
       if (examples.length < 3) {
         recommendations.push(`${category}: Add more examples (${examples.length}/3 minimum)`);
       } else if (examples.length < 5) {
         recommendations.push(`${category}: Add more examples for better accuracy (${examples.length}/5 recommended)`);
       }
 
-      if (variance > 0.2) {
+      if (variance > 0.15) {
         recommendations.push(`${category}: Training examples are inconsistent - review image quality`);
       }
       
@@ -113,36 +112,41 @@ export class EnhancedDetector {
     const stats = this.categoryStats.get(category);
     if (!stats) return;
 
-    // Balanced threshold adjustment that works with feedback
-    let threshold = 0.75; // Balanced base threshold
+    // Unified adaptive threshold system
+    let threshold = 0.75; // Unified base threshold
 
-    // Adjust based on consistency
-    if (stats.variance < 0.08) {
-      threshold -= 0.03; // Small reduction for consistent data
-    } else if (stats.variance > 0.2) {
-      threshold += 0.05; // Increase for inconsistent data
+    // Quality-based adjustment
+    if (stats.variance < 0.06) {
+      threshold -= 0.04; // Larger reduction for very consistent data
+    } else if (stats.variance < 0.12) {
+      threshold -= 0.02; // Small reduction for good consistency
+    } else if (stats.variance > 0.18) {
+      threshold += 0.06; // Increase for inconsistent data
     }
 
-    // Adjust based on sample size
-    if (examples.length >= 6) {
-      threshold -= 0.02; // Small reduction for well-trained categories
+    // Sample size adjustment
+    if (examples.length >= 8) {
+      threshold -= 0.03; // Well-trained categories get lower thresholds
+    } else if (examples.length >= 5) {
+      threshold -= 0.01; // Moderately trained categories
     } else if (examples.length < 3) {
-      threshold += 0.05; // Increase for poorly trained categories
+      threshold += 0.08; // Very high threshold for poorly trained categories
     }
 
-    // Consider feedback corrections for this category
+    // Feedback integration bonus
     const corrections = this.feedbackCorrections.get(category);
     if (corrections && corrections.length > 0) {
-      // Lower threshold slightly if we have feedback data
-      threshold -= 0.02;
-      console.log(`🔄 Threshold adjusted for feedback: ${category} has ${corrections.length} corrections`);
+      // More aggressive threshold reduction for categories with feedback
+      const feedbackBonus = Math.min(0.05, corrections.length * 0.005);
+      threshold -= feedbackBonus;
+      console.log(`🎯 Feedback bonus applied: ${category} gets -${feedbackBonus.toFixed(3)} threshold reduction`);
     }
 
-    // Clamp threshold to reasonable range
+    // Clamp to unified reasonable range
     threshold = Math.max(0.65, Math.min(0.85, threshold));
     
     this.adaptiveThresholds.set(category, threshold);
-    console.log(`🎯 Updated adaptive threshold for ${category}: ${threshold.toFixed(3)} (${examples.length} examples, variance: ${stats.variance.toFixed(3)})`);
+    console.log(`🔧 UNIFIED threshold for ${category}: ${threshold.toFixed(3)} (${examples.length} examples, variance: ${stats.variance.toFixed(3)}, feedback: ${corrections?.length || 0})`);
   }
 
   public addFeedbackCorrection(
@@ -170,22 +174,22 @@ export class EnhancedDetector {
       timestamp: Date.now()
     });
 
-    console.log(`📝 FEEDBACK STORED: ${category}: ${wrongLabel} → ${correctLabel} (${fileName})`);
-    console.log(`📊 Total corrections for ${category}: ${corrections.length}`);
+    console.log(`📝 UNIFIED FEEDBACK STORED: ${category}: ${wrongLabel} → ${correctLabel} (${fileName})`);
+    console.log(`📊 Total unified corrections for ${category}: ${corrections.length}`);
     
-    // Keep only the last 100 corrections per category to manage memory
-    if (corrections.length > 100) {
+    // Keep only the last 50 corrections per category for optimal memory management
+    if (corrections.length > 50) {
       const removed = corrections.shift();
       if (removed?.imageEmbedding) {
         removed.imageEmbedding.dispose();
       }
     }
 
-    // Update threshold immediately when feedback is added
+    // Immediate threshold optimization when feedback is added
     const currentThreshold = this.adaptiveThresholds.get(category) || 0.75;
-    const adjustedThreshold = Math.max(0.65, currentThreshold - 0.01); // Small improvement from feedback
-    this.adaptiveThresholds.set(category, adjustedThreshold);
-    console.log(`🔄 Threshold auto-adjusted for ${category} after feedback: ${adjustedThreshold.toFixed(3)}`);
+    const optimizedThreshold = Math.max(0.65, currentThreshold - 0.015); // Stronger immediate improvement
+    this.adaptiveThresholds.set(category, optimizedThreshold);
+    console.log(`🚀 UNIFIED threshold optimized for ${category} after feedback: ${optimizedThreshold.toFixed(3)}`);
   }
 
   public enhancedDetection(
@@ -194,20 +198,20 @@ export class EnhancedDetector {
     category: string
   ): EnhancedDetectionResult | null {
     if (!targetEmbedding || !labelEmbeddings || Object.keys(labelEmbeddings).length === 0) {
-      console.log('❌ Invalid inputs for enhanced detection');
+      console.log('❌ Invalid inputs for unified enhanced detection');
       return null;
     }
 
-    console.log(`🔍 Enhanced detection for ${category} with ${Object.keys(labelEmbeddings).length} labels`);
+    console.log(`🎯 UNIFIED enhanced detection for ${category} with ${Object.keys(labelEmbeddings).length} labels`);
 
-    // PRIORITY 1: Check for feedback corrections first
-    const correctionResult = this.applyFeedbackCorrections(targetEmbedding, category);
+    // PRIORITY 1: Check feedback corrections first (unified approach)
+    const correctionResult = this.applyUnifiedFeedbackCorrections(targetEmbedding, category);
     if (correctionResult) {
-      console.log(`✅ FEEDBACK CORRECTION APPLIED: "${correctionResult.label}" for ${category} (confidence: ${correctionResult.confidence.toFixed(3)})`);
+      console.log(`✅ UNIFIED FEEDBACK CORRECTION: "${correctionResult.label}" for ${category} (confidence: ${correctionResult.confidence.toFixed(3)})`);
       return correctionResult;
     }
 
-    // PRIORITY 2: Standard enhanced detection
+    // PRIORITY 2: Unified enhanced detection
     let bestMatch: string | null = null;
     let bestScore = -1;
     let bestSimilarity = -1;
@@ -219,25 +223,25 @@ export class EnhancedDetector {
       const similarities: number[] = [];
       
       for (const example of examples) {
-        const similarity = this.enhancedCosineSimilarity(targetEmbedding, example.embedding);
+        const similarity = this.unifiedCosineSimilarity(targetEmbedding, example.embedding);
         similarities.push(similarity);
       }
 
       const maxSim = Math.max(...similarities);
       const avgSim = similarities.reduce((sum, sim) => sum + sim, 0) / similarities.length;
       
-      // Balanced consistency scoring
+      // Unified consistency scoring
       const variance = similarities.reduce((sum, sim) => sum + Math.pow(sim - avgSim, 2), 0) / similarities.length;
-      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 2));
+      const consistencyScore = Math.max(0, 1 - Math.sqrt(variance * 1.5));
 
-      // Balanced composite score that works well with feedback
+      // Unified composite score optimized for feedback integration
       const compositeScore = (
         maxSim * 0.5 +         // Best match importance
-        avgSim * 0.3 +         // Average consistency
-        consistencyScore * 0.2  // Consistency bonus
+        avgSim * 0.35 +        // Average consistency
+        consistencyScore * 0.15 // Consistency bonus
       );
 
-      console.log(`Label "${label}": max=${maxSim.toFixed(3)}, avg=${avgSim.toFixed(3)}, consistency=${consistencyScore.toFixed(3)}, composite=${compositeScore.toFixed(3)}`);
+      console.log(`Label "${label}": max=${maxSim.toFixed(3)}, avg=${avgSim.toFixed(3)}, consistency=${consistencyScore.toFixed(3)}, unified=${compositeScore.toFixed(3)}`);
 
       if (compositeScore > bestScore) {
         bestScore = compositeScore;
@@ -248,21 +252,21 @@ export class EnhancedDetector {
     }
 
     if (!bestMatch) {
-      console.log('❌ No match found in enhanced detection');
+      console.log('❌ No match found in unified enhanced detection');
       return null;
     }
 
-    // Use adaptive threshold with feedback consideration
+    // Use unified adaptive threshold
     const threshold = this.adaptiveThresholds.get(category) || this.adaptiveThresholds.get('default') || 0.75;
     
-    // Additional requirements for acceptance (balanced for feedback integration)
-    const minConsistency = 0.6; 
-    const minSimilarity = 0.70; 
+    // Unified acceptance criteria
+    const minConsistency = 0.55; // More lenient for feedback integration
+    const minSimilarity = 0.68;  // More lenient for feedback integration
 
-    console.log(`🎯 Enhanced result: ${bestMatch}, score: ${bestScore.toFixed(3)}, similarity: ${bestSimilarity.toFixed(3)}, consistency: ${bestConsistency.toFixed(3)}, threshold: ${threshold.toFixed(3)}`);
+    console.log(`🎯 UNIFIED result: ${bestMatch}, score: ${bestScore.toFixed(3)}, similarity: ${bestSimilarity.toFixed(3)}, consistency: ${bestConsistency.toFixed(3)}, threshold: ${threshold.toFixed(3)}`);
 
     if (bestScore >= threshold && bestConsistency >= minConsistency && bestSimilarity >= minSimilarity) {
-      console.log(`✅ ENHANCED ACCEPTED: "${bestMatch}"`);
+      console.log(`✅ UNIFIED ACCEPTED: "${bestMatch}"`);
       return {
         label: bestMatch,
         confidence: bestScore,
@@ -272,7 +276,7 @@ export class EnhancedDetector {
       };
     }
 
-    console.log(`❌ ENHANCED REJECTED: score ${bestScore.toFixed(3)} < ${threshold.toFixed(3)} OR consistency ${bestConsistency.toFixed(3)} < ${minConsistency} OR similarity ${bestSimilarity.toFixed(3)} < ${minSimilarity}`);
+    console.log(`❌ UNIFIED REJECTED: score ${bestScore.toFixed(3)} < ${threshold.toFixed(3)} OR consistency ${bestConsistency.toFixed(3)} < ${minConsistency} OR similarity ${bestSimilarity.toFixed(3)} < ${minSimilarity}`);
     return {
       label: 'Not Detected',
       confidence: bestScore,
@@ -282,7 +286,7 @@ export class EnhancedDetector {
     };
   }
 
-  private applyFeedbackCorrections(
+  private applyUnifiedFeedbackCorrections(
     targetEmbedding: tf.Tensor,
     category: string
   ): EnhancedDetectionResult | null {
@@ -291,61 +295,61 @@ export class EnhancedDetector {
       return null;
     }
 
-    console.log(`🔍 Checking ${corrections.length} feedback corrections for ${category}`);
+    console.log(`🔍 Checking ${corrections.length} unified feedback corrections for ${category}`);
 
     let bestMatch: string | null = null;
     let bestSimilarity = -1;
     let bestFileName = '';
 
     for (const correction of corrections) {
-      const similarity = this.enhancedCosineSimilarity(targetEmbedding, correction.imageEmbedding);
+      const similarity = this.unifiedCosineSimilarity(targetEmbedding, correction.imageEmbedding);
       
-      // Use balanced threshold for feedback corrections - not too strict, not too loose
-      if (similarity > 0.80 && similarity > bestSimilarity) {
+      // Unified threshold for feedback corrections - more aggressive
+      if (similarity > 0.78 && similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestMatch = correction.correctLabel;
         bestFileName = correction.fileName;
-        console.log(`🎯 Strong feedback match found: ${correction.fileName} → ${correction.correctLabel} (similarity: ${similarity.toFixed(3)})`);
+        console.log(`🎯 UNIFIED feedback match: ${correction.fileName} → ${correction.correctLabel} (similarity: ${similarity.toFixed(3)})`);
       }
     }
 
-    if (bestMatch && bestSimilarity > 0.80) {
-      console.log(`✅ APPLYING FEEDBACK CORRECTION: ${bestMatch} (similarity: ${bestSimilarity.toFixed(3)}, source: ${bestFileName})`);
+    if (bestMatch && bestSimilarity > 0.78) {
+      console.log(`✅ APPLYING UNIFIED FEEDBACK CORRECTION: ${bestMatch} (similarity: ${bestSimilarity.toFixed(3)}, source: ${bestFileName})`);
       return {
         label: bestMatch,
-        confidence: Math.min(0.95, bestSimilarity + 0.1), // Boost confidence for feedback matches
+        confidence: Math.min(0.98, bestSimilarity + 0.12), // Higher confidence boost for unified corrections
         similarity: bestSimilarity,
-        consistencyScore: 1.0, // High consistency for corrections
-        qualityScore: bestSimilarity + 0.1
+        consistencyScore: 1.0, // Perfect consistency for corrections
+        qualityScore: bestSimilarity + 0.15
       };
     }
 
     return null;
   }
 
-  private enhancedCosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
-    // Robust cosine similarity with good numerical stability
+  private unifiedCosineSimilarity(a: tf.Tensor, b: tf.Tensor): number {
+    // Unified cosine similarity with optimized numerical stability
     const aFlat = a.flatten();
     const bFlat = b.flatten();
     
     if (aFlat.shape[0] !== bFlat.shape[0]) {
-      console.warn('Tensor shape mismatch in enhanced similarity');
+      console.warn('Tensor shape mismatch in unified similarity');
       aFlat.dispose();
       bFlat.dispose();
       return 0;
     }
     
-    // L2 normalization with stability
+    // Enhanced L2 normalization for better accuracy
     const aNorm = tf.norm(aFlat);
     const bNorm = tf.norm(bFlat);
     
-    const aUnit = tf.div(aFlat, tf.maximum(aNorm, 1e-6));
-    const bUnit = tf.div(bFlat, tf.maximum(bNorm, 1e-6));
+    const aUnit = tf.div(aFlat, tf.maximum(aNorm, 1e-7)); // Improved epsilon
+    const bUnit = tf.div(bFlat, tf.maximum(bNorm, 1e-7));
     
     const dotProduct = tf.sum(tf.mul(aUnit, bUnit));
     const similarity = dotProduct.dataSync()[0];
     
-    // Cleanup
+    // Optimized cleanup
     aFlat.dispose();
     bFlat.dispose();
     aNorm.dispose();
@@ -354,7 +358,7 @@ export class EnhancedDetector {
     bUnit.dispose();
     dotProduct.dispose();
     
-    // Clamp to valid range
+    // Enhanced clamping with better precision
     return Math.max(-1, Math.min(1, similarity || 0));
   }
 
@@ -364,7 +368,7 @@ export class EnhancedDetector {
       if (corrections) {
         corrections.forEach(correction => correction.imageEmbedding.dispose());
         this.feedbackCorrections.delete(category);
-        console.log(`🗑️ Cleared ${corrections.length} feedback corrections for ${category}`);
+        console.log(`🗑️ Cleared ${corrections.length} unified feedback corrections for ${category}`);
       }
     } else {
       // Clear all corrections
@@ -374,7 +378,7 @@ export class EnhancedDetector {
         totalCleared += corrections.length;
       });
       this.feedbackCorrections.clear();
-      console.log(`🗑️ Cleared all ${totalCleared} feedback corrections`);
+      console.log(`🗑️ Cleared all ${totalCleared} unified feedback corrections`);
     }
   }
 
@@ -387,14 +391,14 @@ export class EnhancedDetector {
   }
 
   public logFeedbackStatus() {
-    console.log('📊 FEEDBACK SYSTEM STATUS:');
+    console.log('📊 UNIFIED FEEDBACK SYSTEM STATUS:');
     const stats = this.getFeedbackStats();
     const totalCorrections = Object.values(stats).reduce((sum, count) => sum + count, 0);
-    console.log(`📝 Total corrections stored: ${totalCorrections}`);
+    console.log(`📝 Total unified corrections stored: ${totalCorrections}`);
     Object.entries(stats).forEach(([category, count]) => {
       console.log(`   ${category}: ${count} corrections`);
     });
-    console.log('🎯 Current adaptive thresholds:');
+    console.log('🎯 Current unified adaptive thresholds:');
     this.adaptiveThresholds.forEach((threshold, category) => {
       console.log(`   ${category}: ${threshold.toFixed(3)}`);
     });
