@@ -1,3 +1,4 @@
+
 import * as tf from '@tensorflow/tfjs';
 import { cosineSimilarity } from './embeddingUtils';
 
@@ -129,6 +130,14 @@ export class EnhancedDetector {
       threshold += 0.05; // Increase for poorly trained categories
     }
 
+    // Consider feedback corrections for this category
+    const corrections = this.feedbackCorrections.get(category);
+    if (corrections && corrections.length > 0) {
+      // Lower threshold slightly if we have feedback data
+      threshold -= 0.02;
+      console.log(`🔄 Threshold adjusted for feedback: ${category} has ${corrections.length} corrections`);
+    }
+
     // Clamp threshold to reasonable range
     threshold = Math.max(0.65, Math.min(0.85, threshold));
     
@@ -171,6 +180,12 @@ export class EnhancedDetector {
         removed.imageEmbedding.dispose();
       }
     }
+
+    // Update threshold immediately when feedback is added
+    const currentThreshold = this.adaptiveThresholds.get(category) || 0.75;
+    const adjustedThreshold = Math.max(0.65, currentThreshold - 0.01); // Small improvement from feedback
+    this.adaptiveThresholds.set(category, adjustedThreshold);
+    console.log(`🔄 Threshold auto-adjusted for ${category} after feedback: ${adjustedThreshold.toFixed(3)}`);
   }
 
   public enhancedDetection(
@@ -182,6 +197,8 @@ export class EnhancedDetector {
       console.log('❌ Invalid inputs for enhanced detection');
       return null;
     }
+
+    console.log(`🔍 Enhanced detection for ${category} with ${Object.keys(labelEmbeddings).length} labels`);
 
     // PRIORITY 1: Check for feedback corrections first
     const correctionResult = this.applyFeedbackCorrections(targetEmbedding, category);
@@ -195,8 +212,6 @@ export class EnhancedDetector {
     let bestScore = -1;
     let bestSimilarity = -1;
     let bestConsistency = 0;
-
-    console.log(`🔍 Enhanced detection for ${category} with ${Object.keys(labelEmbeddings).length} labels`);
 
     for (const [label, examples] of Object.entries(labelEmbeddings)) {
       if (examples.length === 0) continue;
@@ -378,6 +393,10 @@ export class EnhancedDetector {
     console.log(`📝 Total corrections stored: ${totalCorrections}`);
     Object.entries(stats).forEach(([category, count]) => {
       console.log(`   ${category}: ${count} corrections`);
+    });
+    console.log('🎯 Current adaptive thresholds:');
+    this.adaptiveThresholds.forEach((threshold, category) => {
+      console.log(`   ${category}: ${threshold.toFixed(3)}`);
     });
   }
 }

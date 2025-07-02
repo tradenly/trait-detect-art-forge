@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle, XCircle, ImagePlus, AlertTriangle, Sparkles } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
-import { findClosestLabel } from '@/utils/traitUtils';
 import { enhancedDetector } from '@/utils/enhancedDetection';
 import * as tf from '@tensorflow/tfjs';
 
@@ -107,8 +105,12 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
     let maxConfidence = 0;
 
     for (const rareTrait of rareTraits) {
-      // Check if this rare trait matches any of the detected regular traits
-      const regularTraitResult = findClosestLabel(embedding, trainedTraits[rareTrait.category] as any, rareTrait.category);
+      // Use enhanced detector for rare trait detection
+      const regularTraitResult = enhancedDetector.enhancedDetection(
+        embedding, 
+        trainedTraits[rareTrait.category] as any, 
+        rareTrait.category
+      );
       
       if (regularTraitResult && regularTraitResult.label === rareTrait.value && regularTraitResult.confidence > 0.7) {
         detectedRareTraits.push(`${rareTrait.category}: ${rareTrait.value} (${rareTrait.rarity})`);
@@ -151,16 +153,22 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
         const detectedTraits: any = {};
         const confidenceScores: any = {};
 
-        // Detect regular traits
+        console.log(`🔍 Processing image ${i + 1}/${imageEmbeddings.length}`);
+
+        // Use enhanced detector for ALL trait detection (this integrates feedback)
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
-          const result = findClosestLabel(embedding, traitValues as any, traitCategory);
+          console.log(`🎯 Detecting ${traitCategory} using enhanced detector`);
+          
+          const result = enhancedDetector.enhancedDetection(embedding, traitValues as any, traitCategory);
 
           if (result && result.label !== 'Not Detected') {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
+            console.log(`✅ ${traitCategory}: ${result.label} (confidence: ${result.confidence.toFixed(3)})`);
           } else {
             detectedTraits[traitCategory] = 'Not Detected';
             confidenceScores[traitCategory] = result?.confidence || 0;
+            console.log(`❌ ${traitCategory}: Not Detected (confidence: ${(result?.confidence || 0).toFixed(3)})`);
           }
         }
 
@@ -182,7 +190,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
 
       toast({
         title: "Detection Complete ✅",
-        description: `Detected traits in ${detectionResults.length} images`
+        description: `Detected traits in ${detectionResults.length} images using enhanced AI`
       });
     } catch (error) {
       console.error('Detection failed:', error);
@@ -273,6 +281,8 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
     const detectedValue = result.detectedTraits[category] || 'Not Detected';
 
     if (result.imageEmbedding) {
+      console.log(`📝 SUBMITTING FEEDBACK: ${category}: "${detectedValue}" → "${correctValue.trim()}"`);
+      
       enhancedDetector.addFeedbackCorrection(
         result.imageEmbedding,
         detectedValue,
@@ -280,6 +290,9 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
         category,
         result.fileName
       );
+
+      // Log feedback system status
+      enhancedDetector.logFeedbackStatus();
 
       toast({
         title: "Correction Recorded ✅",
@@ -313,6 +326,8 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
     }
 
     if (result.imageEmbedding) {
+      console.log(`📝 SUBMITTING RARE TRAIT FEEDBACK: "${result.rareTraits.length > 0 ? result.rareTraits.join(', ') : 'No rare traits'}" → "${correctValue.trim()}"`);
+      
       enhancedDetector.addFeedbackCorrection(
         result.imageEmbedding,
         result.rareTraits.length > 0 ? result.rareTraits.join(', ') : 'No rare traits',
@@ -320,6 +335,9 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
         'rare-traits',
         result.fileName
       );
+
+      // Log feedback system status
+      enhancedDetector.logFeedbackStatus();
 
       toast({
         title: "Rare Trait Correction Recorded ✅",
@@ -411,7 +429,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           )}
 
           <Button onClick={runDetection} disabled={imageUrls.length === 0 || loading} className="w-full">
-            {loading ? 'Running Detection...' : `Run Detection on ${imageUrls.length} Images`}
+            {loading ? 'Running Enhanced Detection...' : `Run Detection on ${imageUrls.length} Images`}
           </Button>
         </CardContent>
       </Card>
