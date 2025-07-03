@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit, Save, X, Plus, Trash2 } from 'lucide-react';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Edit, Save, X, Plus, Trash2, Sparkles } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 
 interface EditableMetadataCardProps {
@@ -23,6 +23,7 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
   const [tempJsonString, setTempJsonString] = useState('');
   const [newTraitType, setNewTraitType] = useState('');
   const [newTraitValue, setNewTraitValue] = useState('');
+  const [isRareTrait, setIsRareTrait] = useState(false);
 
   const handleNameSave = () => {
     onMetadataUpdate({
@@ -114,25 +115,33 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
       return;
     }
 
+    const newAttribute = {
+      trait_type: newTraitType.trim(),
+      value: newTraitValue.trim(),
+      rarity: isRareTrait ? "rare" : "0%"
+    };
+
+    // Add rare trait indicator if selected
+    if (isRareTrait) {
+      newAttribute.rare = true;
+    }
+
     const updatedMetadata = {
       ...metadata,
       attributes: [
         ...metadata.attributes,
-        {
-          trait_type: newTraitType.trim(),
-          value: newTraitValue.trim(),
-          rarity: "0%"
-        }
+        newAttribute
       ]
     };
 
     onMetadataUpdate(updatedMetadata);
     setNewTraitType('');
     setNewTraitValue('');
+    setIsRareTrait(false);
     
     toast({
-      title: "Attribute Added",
-      description: `Added ${newTraitType}: ${newTraitValue}`
+      title: isRareTrait ? "Rare Attribute Added" : "Attribute Added",
+      description: `Added ${newTraitType}: ${newTraitValue}${isRareTrait ? ' (Rare)' : ''}`
     });
   };
 
@@ -221,9 +230,17 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
           <div className="space-y-2">
             {metadata.attributes.map((attr: any, index: number) => (
               <div key={index} className="flex items-center justify-between bg-slate-800/50 rounded p-2">
-                <Badge variant="secondary" className="bg-blue-600 text-white">
-                  {attr.trait_type}: {attr.value}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant="secondary" 
+                    className={`${attr.rare || attr.rarity === 'rare' ? 'bg-gradient-to-r from-purple-600 to-yellow-600' : 'bg-blue-600'} text-white`}
+                  >
+                    {attr.trait_type}: {attr.value}
+                  </Badge>
+                  {(attr.rare || attr.rarity === 'rare') && (
+                    <Sparkles className="w-4 h-4 text-yellow-400" />
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-slate-400 text-xs">{attr.rarity}</span>
                   <Button
@@ -240,25 +257,39 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
           </div>
         </div>
 
-        {/* Add New Attribute */}
+        {/* Add New Attribute with Rare Trait Checkbox */}
         <div className="space-y-2">
           <Label className="text-white">Add New Attribute</Label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Trait type (e.g., Background)"
-              value={newTraitType}
-              onChange={(e) => setNewTraitType(e.target.value)}
-              className="bg-slate-800 border-slate-600 text-white"
-            />
-            <Input
-              placeholder="Value (e.g., Blue)"
-              value={newTraitValue}
-              onChange={(e) => setNewTraitValue(e.target.value)}
-              className="bg-slate-800 border-slate-600 text-white"
-            />
-            <Button onClick={handleAddAttribute} disabled={!newTraitType.trim() || !newTraitValue.trim()}>
-              <Plus className="w-4 h-4" />
-            </Button>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Trait type (e.g., Background)"
+                value={newTraitType}
+                onChange={(e) => setNewTraitType(e.target.value)}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+              <Input
+                placeholder="Value (e.g., Blue)"
+                value={newTraitValue}
+                onChange={(e) => setNewTraitValue(e.target.value)}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+              <Button onClick={handleAddAttribute} disabled={!newTraitType.trim() || !newTraitValue.trim()}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="rare-trait"
+                checked={isRareTrait}
+                onCheckedChange={(checked) => setIsRareTrait(checked as boolean)}
+                className="border-slate-500 data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-600 data-[state=checked]:to-yellow-600"
+              />
+              <Label htmlFor="rare-trait" className="text-slate-300 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-yellow-400" />
+                Mark as Rare Trait
+              </Label>
+            </div>
           </div>
         </div>
 

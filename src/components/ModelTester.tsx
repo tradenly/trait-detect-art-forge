@@ -104,20 +104,36 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
     const detectedRareTraits: string[] = [];
     let maxConfidence = 0;
 
+    console.log(`🔍 Checking ${rareTraits.length} rare traits...`);
+
     for (const rareTrait of rareTraits) {
+      console.log(`🎯 Checking rare trait: ${rareTrait.category} - ${rareTrait.value} (${rareTrait.rarity})`);
+      
+      // Check if we have training data for this rare trait
+      const categoryTraits = trainedTraits[rareTrait.category];
+      if (!categoryTraits || !categoryTraits[rareTrait.value]) {
+        console.log(`❌ No training data found for rare trait: ${rareTrait.category} - ${rareTrait.value}`);
+        continue;
+      }
+
       // Use enhanced detector for rare trait detection
       const regularTraitResult = enhancedDetector.enhancedDetection(
         embedding, 
-        trainedTraits[rareTrait.category] as any, 
+        categoryTraits, 
         rareTrait.category
       );
       
-      if (regularTraitResult && regularTraitResult.label === rareTrait.value && regularTraitResult.confidence > 0.7) {
-        detectedRareTraits.push(`${rareTrait.category}: ${rareTrait.value} (${rareTrait.rarity})`);
+      console.log(`🔬 Rare trait detection result:`, regularTraitResult);
+      
+      if (regularTraitResult && regularTraitResult.label === rareTrait.value && regularTraitResult.confidence > 0.6) {
+        const rareTraitLabel = `${rareTrait.category}: ${rareTrait.value} (${rareTrait.rarity})`;
+        detectedRareTraits.push(rareTraitLabel);
         maxConfidence = Math.max(maxConfidence, regularTraitResult.confidence);
+        console.log(`✅ Detected rare trait: ${rareTraitLabel} with confidence ${regularTraitResult.confidence}`);
       }
     }
 
+    console.log(`🎉 Final rare traits detected: ${detectedRareTraits.length}`);
     return { detectedRareTraits, confidence: maxConfidence };
   };
 
@@ -152,6 +168,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
         const embedding = imageEmbeddings[i];
         const detectedTraits: any = {};
         const confidenceScores: any = {};
+        const specificTraitResults: any = {};
 
         console.log(`🔍 Processing image ${i + 1}/${imageEmbeddings.length}`);
 
@@ -164,11 +181,29 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           if (result && result.label !== 'Not Detected') {
             detectedTraits[traitCategory] = result.label;
             confidenceScores[traitCategory] = result.confidence;
+            specificTraitResults[traitCategory] = result.label;
             console.log(`✅ ${traitCategory}: ${result.label} (confidence: ${result.confidence.toFixed(3)})`);
           } else {
             detectedTraits[traitCategory] = 'Not Detected';
             confidenceScores[traitCategory] = result?.confidence || 0;
-            console.log(`❌ ${traitCategory}: Not Detected (confidence: ${(result?.confidence || 0).toFixed(3)})`);
+            
+            // Find the most likely trait that wasn't detected with high enough confidence
+            let bestUndetectedTrait = 'Unknown';
+            let bestScore = 0;
+            
+            for (const [traitValue, examples] of Object.entries(traitValues)) {
+              if (examples.length > 0) {
+                // Use a simple similarity check to find the most likely undetected trait
+                const avgSimilarity = result?.confidence || 0;
+                if (avgSimilarity > bestScore) {
+                  bestScore = avgSimilarity;
+                  bestUndetectedTrait = traitValue;
+                }
+              }
+            }
+            
+            specificTraitResults[traitCategory] = bestUndetectedTrait;
+            console.log(`❌ ${traitCategory}: Not Detected (most likely was: ${bestUndetectedTrait}, confidence: ${(result?.confidence || 0).toFixed(3)})`);
           }
         }
 
@@ -180,6 +215,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           fileName: imageFiles[i]?.name,
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
+          specificTraitResults: specificTraitResults,
           rareTraits: rareTraitResult.detectedRareTraits,
           rareTraitConfidence: rareTraitResult.confidence,
           imageEmbedding: embedding
@@ -456,6 +492,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                       {Object.entries(trainedTraits).map(([category, values]) => {
                         const feedbackKey = `${index}-${category}`;
                         const detectedValue = result.detectedTraits[category];
+                        const specificTrait = result.specificTraitResults[category];
                         const confidence = result.confidenceScores[category] || 0;
                         const feedbackValue = feedback[feedbackKey];
                         
@@ -469,7 +506,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                                     variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
                                     className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
                                   >
-                                    {category}: {detectedValue}
+                                    {detectedValue === 'Not Detected' ? `${category}: ${specificTrait}: Not Detected` : `${category}: ${detectedValue}`}
                                   </Badge>
                                   {confidence > 0 && (
                                     <span className="text-slate-400 text-xs">
