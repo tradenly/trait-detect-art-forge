@@ -285,9 +285,43 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
   };
 
   const handleRareTraitsUpdate = (updatedRareTraits: RareTrait[]) => {
+    console.log(`🔥 RARE TRAITS UPDATE: Received ${updatedRareTraits.length} rare traits`);
+    
+    // Update the rare traits first
     if (onRareTraitsUpdated) {
       onRareTraitsUpdated(updatedRareTraits);
     }
+
+    // CRITICAL: Integrate rare traits into main training data structure
+    const updatedTraits = { ...trainedTraits };
+    
+    // Add rare traits to the main training structure so they can be detected
+    updatedRareTraits.forEach(rareTrait => {
+      const { category, value } = rareTrait;
+      
+      // Ensure category exists in main training data
+      if (!updatedTraits[category]) {
+        updatedTraits[category] = {};
+        console.log(`🆕 Created new category for rare trait: ${category}`);
+      }
+      
+      // Check if we already have training data for this rare trait
+      const existingTrainingData = updatedTraits[category][value];
+      if (existingTrainingData && existingTrainingData.length > 0) {
+        console.log(`✅ Rare trait ${category}:${value} already has ${existingTrainingData.length} training examples`);
+      } else {
+        // Initialize empty array if no training data exists yet
+        if (!updatedTraits[category][value]) {
+          updatedTraits[category][value] = [];
+          console.log(`🔧 Initialized empty training array for rare trait: ${category}:${value}`);
+        }
+      }
+    });
+
+    // Update the main training data to include rare trait categories
+    onTraitsUpdated(updatedTraits);
+    
+    console.log(`🎯 RARE TRAIT INTEGRATION COMPLETE: ${updatedRareTraits.length} rare traits integrated into training data`);
   };
 
   return (
@@ -316,7 +350,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
         </CardContent>
       </Card>
 
-      {/* Add New Category - MOVED TO FIRST POSITION */}
       <Card className="bg-slate-700/30 border-slate-600">
         <CardHeader>
           <CardTitle className="text-white text-lg">1. Create Trait Categories</CardTitle>
@@ -366,7 +399,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
         </CardContent>
       </Card>
 
-      {/* Train Selected Category */}
       {selectedCategory && (
         <Card className="bg-slate-700/30 border-slate-600">
           <CardHeader>
@@ -399,7 +431,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
               </div>
             </div>
 
-            {/* Display current trait values with editing capabilities */}
             {trainedTraits[selectedCategory] && Object.keys(trainedTraits[selectedCategory]).length > 0 && (
               <div className="space-y-3">
                 <Label className="text-white">Current Trait Values for {selectedCategory} (click to edit):</Label>
@@ -419,7 +450,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
                         {getQualityMessage(examples)}
                       </div>
                       
-                      {/* Add more examples button */}
                       <div className="relative mb-2">
                         <input
                           type="file"
@@ -473,14 +503,12 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
         </Card>
       )}
 
-      {/* Rare Trait Definer - MOVED TO AFTER REGULAR TRAITS */}
       <RareTraitDefiner 
         onRareTraitsUpdate={handleRareTraitsUpdate}
         initialRareTraits={rareTraits}
         trainedTraits={trainedTraits}
       />
 
-      {/* Training Summary */}
       {categories.length > 0 && (
         <Card className="bg-green-900/20 border-green-700">
           <CardHeader>
