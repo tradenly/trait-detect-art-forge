@@ -469,7 +469,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                                     variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
                                     className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
                                   >
-                                    {detectedValue === 'Not Detected' ? `${category} - Not Detected` : `${category} - ${detectedValue}`}
+                                    {detectedValue === 'Not Detected' ? `${category}: Not Detected` : `${category}: ${detectedValue}`}
                                   </Badge>
                                   {confidence > 0 && (
                                     <span className="text-slate-400 text-xs">
@@ -519,7 +519,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                               <div className="flex gap-2 mt-2">
                                 <Input
                                   type="text"
-                                  placeholder={`Enter correct ${category} value`}
+                                  placeholder={`Enter correct ${category} value or describe what's wrong (e.g., "green" or "no ${category.toLowerCase()} in this image")`}
                                   value={correctionInputs[feedbackKey] || ''}
                                   onChange={(e) => handleCorrectionInputChange(index, category, e.target.value)}
                                   className="bg-slate-600 border-slate-500 text-white text-sm"
