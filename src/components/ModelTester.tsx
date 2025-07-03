@@ -469,7 +469,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                                     variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
                                     className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
                                   >
-                                    {detectedValue === 'Not Detected' ? `${category}: Not Detected` : `${category}: ${detectedValue}`}
+                                    {category}: {detectedValue}
                                   </Badge>
                                   {confidence > 0 && (
                                     <span className="text-slate-400 text-xs">
