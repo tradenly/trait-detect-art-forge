@@ -121,11 +121,6 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
       rarity: isRareTrait ? "rare" : "0%"
     };
 
-    // Add rare trait indicator if selected
-    if (isRareTrait) {
-      newAttribute.rare = true;
-    }
-
     const updatedMetadata = {
       ...metadata,
       attributes: [
@@ -233,11 +228,11 @@ const EditableMetadataCard = ({ metadata, onMetadataUpdate }: EditableMetadataCa
                 <div className="flex items-center gap-2">
                   <Badge 
                     variant="secondary" 
-                    className={`${attr.rare || attr.rarity === 'rare' ? 'bg-gradient-to-r from-purple-600 to-yellow-600' : 'bg-blue-600'} text-white`}
+                    className={`${attr.rarity === 'rare' ? 'bg-gradient-to-r from-purple-600 to-yellow-600' : 'bg-blue-600'} text-white`}
                   >
                     {attr.trait_type}: {attr.value}
                   </Badge>
-                  {(attr.rare || attr.rarity === 'rare') && (
+                  {attr.rarity === 'rare' && (
                     <Sparkles className="w-4 h-4 text-yellow-400" />
                   )}
                 </div>
