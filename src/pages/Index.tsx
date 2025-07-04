@@ -25,6 +25,10 @@ const Index = () => {
   const [uploadedImages, setUploadedImages] = useState([]);
   const [detectedMetadata, setDetectedMetadata] = useState([]);
 
+  // Debug logging for rare traits
+  console.log('🐛 DEBUG: Current rare traits state:', rareTraits);
+  console.log('🐛 DEBUG: Rare traits count:', rareTraits.length);
+
   const steps = [
     { id: 'onboarding', title: 'Get Started', icon: Brain },
     { id: 'train', title: 'Train AI Model', icon: Brain },
@@ -118,9 +122,15 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <TraitTrainer 
-                  onTraitsUpdated={setTrainedTraits}
+                  onTraitsUpdated={(traits) => {
+                    console.log('🐛 DEBUG: TraitTrainer updated traits:', traits);
+                    setTrainedTraits(traits);
+                  }}
                   trainedTraits={trainedTraits}
-                  onRareTraitsUpdated={setRareTraits}
+                  onRareTraitsUpdated={(rareTraits) => {
+                    console.log('🐛 DEBUG: TraitTrainer updated rare traits:', rareTraits);
+                    setRareTraits(rareTraits);
+                  }}
                   rareTraits={rareTraits}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
