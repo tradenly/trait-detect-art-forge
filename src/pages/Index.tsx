@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -153,6 +152,7 @@ const Index = () => {
               <CardContent>
                 <ModelTester 
                   trainedTraits={trainedTraits}
+                  rareTraits={rareTraits}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <Button 
