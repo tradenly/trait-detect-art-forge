@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -16,13 +17,21 @@ interface TrainingExample {
   imageUrl: string;
 }
 
+interface RareTrait {
+  category: string;
+  value: string;
+  rarity: 'rare' | 'epic' | 'legendary';
+  description?: string;
+}
+
 interface TraitClassifierProps {
   uploadedImages: File[];
   trainedTraits: any;
+  rareTraits: RareTrait[];
   onMetadataGenerated: (metadata: any[]) => void;
 }
 
-const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }: TraitClassifierProps) => {
+const TraitClassifier = ({ uploadedImages, trainedTraits, rareTraits, onMetadataGenerated }: TraitClassifierProps) => {
   const [classifying, setClassifying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<any[]>([]);
@@ -66,12 +75,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       
       toast({
         title: "🎯 Enhanced AI Analysis Starting",
-        description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality. ${totalFeedback} smart corrections active.`
+        description: `Processing ${uploadedImages.length} images with ${Math.round(trainingAnalysis.qualityScore * 100)}% training quality. ${totalFeedback} smart corrections active. ${rareTraits.length} rare traits configured.`
       });
 
       console.log('🚀 Starting ENHANCED detection pipeline with smart feedback integration');
       console.log('📊 Training quality:', trainingAnalysis.qualityScore.toFixed(2));
       console.log('🎯 Active smart feedback corrections:', feedbackStats);
+      console.log('🔥 Rare traits to detect:', rareTraits.length);
 
       for (let i = 0; i < uploadedImages.length; i++) {
         const file = uploadedImages[i];
@@ -85,8 +95,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         const confidenceScores: any = {};
         const detectionStatus: any = {};
         const feedbackApplied: any = {};
+        const rareTraitFlags: any = {};
         
-        // Use enhanced detector with smart feedback integration
+        // Use enhanced detector with smart feedback integration for regular traits
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Enhanced detection for ${traitCategory} on ${file.name}`);
           
@@ -111,6 +122,42 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           }
         }
 
+        // RARE TRAIT DETECTION - Process each rare trait separately
+        console.log(`🔍 Checking ${rareTraits.length} rare traits...`);
+        const detectedRareTraits: any[] = [];
+        
+        for (const rareTrait of rareTraits) {
+          const { category, value, rarity } = rareTrait;
+          
+          // Check if we have training data for this rare trait
+          if (trainedTraits[category] && trainedTraits[category][value] && trainedTraits[category][value].length > 0) {
+            console.log(`🔥 Checking rare trait: ${category}:${value} (${rarity})`);
+            
+            // Use the same enhanced detection method but specifically for this rare trait
+            const rareTraitData = { [value]: trainedTraits[category][value] };
+            const rareResult = enhancedDetector.enhancedDetection(embedding, rareTraitData, category);
+            
+            if (rareResult && rareResult.label !== 'Not Detected') {
+              // Override regular detection if rare trait is detected with high confidence
+              if (rareResult.confidence > (confidenceScores[category] || 0)) {
+                detectedTraits[category] = rareResult.label;
+                confidenceScores[category] = rareResult.confidence;
+                detectionStatus[category] = 'detected';
+                rareTraitFlags[category] = { rarity, isRare: true };
+                detectedRareTraits.push({ category, value: rareResult.label, rarity, confidence: rareResult.confidence });
+                
+                console.log(`🔥✅ RARE TRAIT DETECTED: ${category}:${rareResult.label} (${rarity}) - ${Math.round(rareResult.confidence * 100)}% confidence`);
+              }
+            } else {
+              console.log(`🔥❌ Rare trait ${category}:${value} not detected (${Math.round((rareResult?.confidence || 0) * 100)}% confidence)`);
+            }
+          } else {
+            console.log(`⚠️ No training data for rare trait: ${category}:${value}`);
+          }
+        }
+        
+        console.log(`🎉 Final rare traits detected: ${detectedRareTraits.length}`);
+
         // Apply ENHANCED conflict resolution with strict mutual exclusion
         console.log('🔧 Applying enhanced conflict resolution...');
         const resolvedTraits = resolveTraitConflicts(detectedTraits);
@@ -118,28 +165,32 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
 
         embedding.dispose();
 
-        // Create attributes array from resolved traits
+        // Create attributes array from resolved traits with rare trait information
         const attributes = Object.entries(resolvedTraits).map(([trait_type, value]) => ({
           trait_type,
           value: value as string,
           confidence: confidenceScores[trait_type],
           rarity: "0%", // Will be calculated later
-          feedbackEnhanced: feedbackApplied[trait_type] || false
+          feedbackEnhanced: feedbackApplied[trait_type] || false,
+          isRare: rareTraitFlags[trait_type]?.isRare || false,
+          rarityLevel: rareTraitFlags[trait_type]?.rarity || null
         }));
 
-        // Enhanced metadata generation with conflict tracking
+        // Enhanced metadata generation with conflict tracking and rare trait info
         const metadata = {
           name: `NFT #${String(i + 1).padStart(4, '0')}`,
-          description: "AI-generated NFT with enhanced conflict-free detection",
+          description: "AI-generated NFT with enhanced conflict-free detection and rare trait support",
           image: `ipfs://YOUR-HASH/${file.name}`,
           fileName: file.name,
           imageUrl: URL.createObjectURL(file),
-          collectionName: "Enhanced Conflict-Free AI Collection",
-          collectionDescription: "Generated with Enhanced Detection and Smart Conflict Resolution",
+          collectionName: "Enhanced Conflict-Free AI Collection with Rare Traits",
+          collectionDescription: "Generated with Enhanced Detection, Smart Conflict Resolution, and Rare Trait Detection",
           attributes,
           confidenceScores,
           feedbackApplied,
+          rareTraitFlags,
           conflictsResolved: Object.keys(detectedTraits).length - Object.keys(resolvedTraits).length,
+          rareTraitsDetected: detectedRareTraits,
           allTraitAnalysis: Object.entries(trainedTraits).map(([trait_type, values]: [string, any]) => ({
             trait_type,
             value: resolvedTraits[trait_type] || 'Not Detected',
@@ -148,7 +199,9 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             rarity: "0%",
             isDetected: detectionStatus[trait_type] === 'detected',
             feedbackEnhanced: feedbackApplied[trait_type] || false,
-            wasConflicted: detectedTraits[trait_type] && !resolvedTraits[trait_type]
+            wasConflicted: detectedTraits[trait_type] && !resolvedTraits[trait_type],
+            isRare: rareTraitFlags[trait_type]?.isRare || false,
+            rarityLevel: rareTraitFlags[trait_type]?.rarity || null
           }))
         };
 
@@ -188,7 +241,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
       setResults(metadataArray);
       setCurrentPhase('complete');
       
-      // Enhanced completion metrics with conflict tracking
+      // Enhanced completion metrics with conflict tracking and rare trait stats
       const detectedCount = metadataArray.reduce((sum, item) => sum + item.attributes.length, 0);
       const totalAnalyzed = metadataArray.length * Object.keys(trainedTraits).length;
       const detectionRate = ((detectedCount / totalAnalyzed) * 100).toFixed(1);
@@ -196,16 +249,18 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         sum + item.attributes.filter((attr: any) => attr.feedbackEnhanced).length, 0
       );
       const totalConflictsResolved = metadataArray.reduce((sum, item) => sum + (item.conflictsResolved || 0), 0);
+      const totalRareTraitsDetected = metadataArray.reduce((sum, item) => sum + (item.rareTraitsDetected?.length || 0), 0);
       
       console.log('📊 ENHANCED DETECTION COMPLETE:');
       console.log(`   Detection Rate: ${detectionRate}%`);
       console.log(`   Feedback Enhanced: ${feedbackEnhancedCount} detections`);
       console.log(`   Conflicts Resolved: ${totalConflictsResolved}`);
+      console.log(`   Rare Traits Detected: ${totalRareTraitsDetected}`);
       console.log(`   Total Processed: ${uploadedImages.length} images`);
       
       toast({
         title: "🎉 Enhanced Analysis Complete!",
-        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% rate). ${feedbackEnhancedCount} feedback-enhanced. ${totalConflictsResolved} conflicts resolved.`
+        description: `${uploadedImages.length} images analyzed. ${detectedCount} traits detected (${detectionRate}% rate). ${feedbackEnhancedCount} feedback-enhanced. ${totalConflictsResolved} conflicts resolved. ${totalRareTraitsDetected} rare traits found!`
       });
     } catch (error) {
       console.error('Classification failed:', error);
@@ -274,13 +329,13 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
   function getPhaseDescription() {
     switch (currentPhase) {
       case 'analyzing':
-        return 'Running enhanced conflict-free AI analysis...';
+        return 'Running enhanced conflict-free AI analysis with rare trait detection...';
       case 'calculating':
         return 'Computing trait frequencies and rarity percentages...';
       case 'complete':
-        return 'Enhanced conflict-free analysis complete!';
+        return 'Enhanced conflict-free analysis with rare trait detection complete!';
       default:
-        return 'Ready to start enhanced analysis';
+        return 'Ready to start enhanced analysis with rare trait detection';
     }
   }
 
@@ -296,16 +351,22 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-white font-medium">🎯 Enhanced Conflict-Free Detection</h4>
+              <h4 className="text-white font-medium">🎯 Enhanced Conflict-Free Detection with Rare Traits</h4>
               <div className="text-sm text-slate-300 space-y-1">
                 <p><strong>Smart Pipeline:</strong> AI detection with conflict resolution and intelligent feedback</p>
                 <p><strong>Conflict Prevention:</strong> Eliminates impossible combinations (shorts + pants)</p>
                 <p><strong>Smart Feedback:</strong> Distinguishes corrections from instructions automatically</p>
+                <p><strong>Rare Trait Detection:</strong> {rareTraits.length} rare traits configured for special detection</p>
                 <p><strong>Active Memory:</strong> {totalFeedback} smart corrections applied automatically</p>
               </div>
               {totalFeedback > 0 && (
                 <div className="text-xs text-green-300 mt-2 p-2 bg-green-900/20 rounded">
                   🧠 Smart corrections: {Object.entries(feedbackStats).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
+                </div>
+              )}
+              {rareTraits.length > 0 && (
+                <div className="text-xs text-purple-300 mt-2 p-2 bg-purple-900/20 rounded">
+                  🔥 Rare traits: {rareTraits.map(rt => `${rt.category}:${rt.value}(${rt.rarity})`).join(', ')}
                 </div>
               )}
             </div>
@@ -317,15 +378,15 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-blue-400" />
-            🎯 Enhanced Detection
+            🎯 Enhanced Detection with Rare Traits
           </CardTitle>
           <CardDescription className="text-slate-400">
-            AI trait detection with conflict resolution and integrated feedback learning and adaptive thresholds
+            AI trait detection with conflict resolution, integrated feedback learning, adaptive thresholds, and rare trait support
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Grid layout */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{uploadedImages.length}</div>
               <div className="text-sm text-slate-400">Images to Analyze</div>
@@ -333,6 +394,10 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-blue-400">{Object.keys(trainedTraits).length}</div>
               <div className="text-sm text-slate-400">Trait Categories</div>
+            </div>
+            <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-400">{rareTraits.length}</div>
+              <div className="text-sm text-slate-400">Rare Traits</div>
             </div>
             <div className="text-center p-4 bg-slate-800/50 rounded-lg">
               <div className="text-2xl font-bold text-green-400">{totalFeedback}</div>
@@ -357,7 +422,7 @@ const TraitClassifier = ({ uploadedImages, trainedTraits, onMetadataGenerated }:
             size="lg"
           >
             <Play className="w-5 h-5 mr-2" />
-            {classifying ? 'Running Enhanced Conflict-Free Analysis...' : '🎯 Start Enhanced Conflict-Free Detection'}
+            {classifying ? 'Running Enhanced Conflict-Free Analysis with Rare Traits...' : '🎯 Start Enhanced Detection with Rare Traits'}
           </Button>
         </CardContent>
       </Card>

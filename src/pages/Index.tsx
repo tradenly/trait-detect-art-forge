@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +11,17 @@ import TraitClassifier from '@/components/TraitClassifier';
 import MetadataGenerator from '@/components/MetadataGenerator';
 import { Brain, Upload, TestTube, Sparkles, Download, ArrowRight } from 'lucide-react';
 
+interface RareTrait {
+  category: string;
+  value: string;
+  rarity: 'rare' | 'epic' | 'legendary';
+  description?: string;
+}
+
 const Index = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [trainedTraits, setTrainedTraits] = useState({});
+  const [rareTraits, setRareTraits] = useState<RareTrait[]>([]);
   const [modelTested, setModelTested] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
   const [detectedMetadata, setDetectedMetadata] = useState([]);
@@ -112,6 +121,8 @@ const Index = () => {
                 <TraitTrainer 
                   onTraitsUpdated={setTrainedTraits}
                   trainedTraits={trainedTraits}
+                  onRareTraitsUpdated={setRareTraits}
+                  rareTraits={rareTraits}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <Button 
@@ -207,6 +218,7 @@ const Index = () => {
                 <TraitClassifier 
                   uploadedImages={uploadedImages}
                   trainedTraits={trainedTraits}
+                  rareTraits={rareTraits}
                   onMetadataGenerated={setDetectedMetadata}
                 />
                 <div className="mt-6 pt-6 border-t border-slate-700">
