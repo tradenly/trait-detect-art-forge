@@ -28,6 +28,8 @@ const Index = () => {
   // Debug logging for rare traits
   console.log('🐛 DEBUG: Current rare traits state:', rareTraits);
   console.log('🐛 DEBUG: Rare traits count:', rareTraits.length);
+  console.log('🐛 DEBUG: trainedTraits keys:', Object.keys(trainedTraits));
+  console.log('🐛 DEBUG: trainedTraits structure:', trainedTraits);
 
   const steps = [
     { id: 'onboarding', title: 'Get Started', icon: Brain },
@@ -48,6 +50,8 @@ const Index = () => {
   const nextStep = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
+      // Scroll to top when changing steps
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -79,7 +83,12 @@ const Index = () => {
               return (
                 <div key={step.id} className="flex items-center">
                   <button 
-                    onClick={() => isAccessible && setCurrentStep(index)}
+                    onClick={() => {
+                      if (isAccessible) {
+                        setCurrentStep(index);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                       isActive 
                         ? 'bg-purple-600 text-white' 
@@ -129,6 +138,8 @@ const Index = () => {
                   trainedTraits={trainedTraits}
                   onRareTraitsUpdated={(rareTraits) => {
                     console.log('🐛 DEBUG: TraitTrainer updated rare traits:', rareTraits);
+                    console.log('🐛 DEBUG: Number of rare traits received:', rareTraits.length);
+                    console.log('🐛 DEBUG: Rare traits details:', rareTraits.map(rt => `${rt.category}:${rt.value}(${rt.rarity})`));
                     setRareTraits(rareTraits);
                   }}
                   rareTraits={rareTraits}

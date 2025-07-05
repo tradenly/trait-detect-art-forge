@@ -25,18 +25,20 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
 
   const generateFinalMetadata = () => {
     return metadata.map((item, index) => ({
-      ...item,
       name: `${collectionName} #${String(index + 1).padStart(4, '0')}`,
       description: collectionDescription,
       image: `${ipfsBaseUrl}/${item.fileName}`,
       collectionName,
       collectionDescription,
-      // Ensure all attributes have proper rarity calculations
-      attributes: item.attributes.map((attr: any) => ({
+      // Clean attributes - only detected traits
+      attributes: item.attributes.filter((attr: any) => attr.value !== 'Not Detected').map((attr: any) => ({
         trait_type: attr.trait_type,
         value: attr.value,
         rarity: attr.rarity
-      }))
+      })),
+      // Remove duplicate analysis data to clean up output
+      fileName: item.fileName,
+      imageUrl: item.imageUrl
     }));
   };
 

@@ -172,38 +172,49 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
 
         console.log(`🔍 Processing image ${i + 1}/${imageEmbeddings.length}`);
 
-        // Use enhanced detector for ALL trait detection (this integrates feedback)
+        // Use enhanced detector for ALL trait detection - TEST EACH VALUE SEPARATELY
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
           console.log(`🎯 Detecting ${traitCategory} using enhanced detector`);
           
-          const result = enhancedDetector.enhancedDetection(embedding, traitValues as any, traitCategory);
-
-          if (result && result.label !== 'Not Detected') {
-            detectedTraits[traitCategory] = result.label;
-            confidenceScores[traitCategory] = result.confidence;
-            specificTraitResults[traitCategory] = result.label;
-            console.log(`✅ ${traitCategory}: ${result.label} (confidence: ${result.confidence.toFixed(3)})`);
-          } else {
-            detectedTraits[traitCategory] = 'Not Detected';
-            confidenceScores[traitCategory] = result?.confidence || 0;
-            
-            // Find the most likely trait that wasn't detected with high enough confidence
-            let bestUndetectedTrait = 'Unknown';
-            let bestScore = 0;
-            
-            for (const [traitValue, examples] of Object.entries(traitValues)) {
-              if (examples.length > 0) {
-                // Use a simple similarity check to find the most likely undetected trait
-                const avgSimilarity = result?.confidence || 0;
-                if (avgSimilarity > bestScore) {
-                  bestScore = avgSimilarity;
-                  bestUndetectedTrait = traitValue;
-                }
+          // Test each possible value for this category separately
+          const categoryResults: any = {};
+          let bestResult: any = null;
+          let bestConfidence = 0;
+          
+          for (const [traitValue, examples] of Object.entries(traitValues as any)) {
+            if (Array.isArray(examples) && examples.length > 0) {
+              // Test this specific trait value
+              const singleTraitData = { [traitValue]: examples };
+              const result = enhancedDetector.enhancedDetection(embedding, singleTraitData, traitCategory);
+              
+              categoryResults[traitValue] = {
+                result: result,
+                confidence: result?.confidence || 0,
+                detected: result && result.label !== 'Not Detected'
+              };
+              
+              console.log(`🔍 Testing ${traitCategory}:${traitValue} - ${result?.label || 'Not Detected'} (confidence: ${(result?.confidence || 0).toFixed(3)})`);
+              
+              // Track the best result for main detection
+              if (result && result.label !== 'Not Detected' && (result.confidence || 0) > bestConfidence) {
+                bestResult = result;
+                bestConfidence = result.confidence || 0;
               }
             }
-            
-            specificTraitResults[traitCategory] = bestUndetectedTrait;
-            console.log(`❌ ${traitCategory}: Not Detected (most likely was: ${bestUndetectedTrait}, confidence: ${(result?.confidence || 0).toFixed(3)})`);
+          }
+          
+          // Store all individual results for display
+          specificTraitResults[traitCategory] = categoryResults;
+          
+          // Set main detection result
+          if (bestResult) {
+            detectedTraits[traitCategory] = bestResult.label;
+            confidenceScores[traitCategory] = bestResult.confidence;
+            console.log(`✅ ${traitCategory}: ${bestResult.label} (confidence: ${bestResult.confidence.toFixed(3)})`);
+          } else {
+            detectedTraits[traitCategory] = 'Not Detected';
+            confidenceScores[traitCategory] = 0;
+            console.log(`❌ ${traitCategory}: Not Detected`);
           }
         }
 
@@ -464,9 +475,16 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             </p>
           )}
 
-          <Button onClick={runDetection} disabled={imageUrls.length === 0 || loading} className="w-full">
-            {loading ? 'Running Enhanced Detection...' : `Run Detection on ${imageUrls.length} Images`}
-          </Button>
+            <Button onClick={runDetection} disabled={imageUrls.length === 0 || loading} className="w-full">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                  Running Enhanced Detection...
+                </div>
+              ) : (
+                `Run Detection on ${imageUrls.length} Images`
+              )}
+            </Button>
         </CardContent>
       </Card>
 
@@ -488,95 +506,129 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                   <div className="flex-1">
                     <h4 className="text-white font-medium mb-3">{result.fileName}</h4>
                     <div className="space-y-3">
-                      {/* Regular Traits */}
+                      {/* Regular Traits - Show ALL possible values */}
                       {Object.entries(trainedTraits).map(([category, values]) => {
-                        const feedbackKey = `${index}-${category}`;
                         const detectedValue = result.detectedTraits[category];
-                        const specificTrait = result.specificTraitResults[category];
+                        const specificTraitResults = result.specificTraitResults[category];
                         const confidence = result.confidenceScores[category] || 0;
-                        const feedbackValue = feedback[feedbackKey];
                         
                         return (
                           <div key={category} className="p-3 bg-slate-700/50 rounded-lg">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex-1">
-                                <Label className="text-white font-medium text-sm">{category}:</Label>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge 
-                                    variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
-                                    className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
-                                  >
-                                    {detectedValue === 'Not Detected' ? `${category}: ${specificTrait}: Not Detected` : `${category}: ${detectedValue}`}
-                                  </Badge>
-                                  {confidence > 0 && (
-                                    <span className="text-slate-400 text-xs">
-                                      {Math.round(confidence * 100)}% confidence
-                                    </span>
-                                  )}
-                                  {detectedValue === 'Not Detected' && confidence > 0.5 && (
-                                    <div className="text-yellow-400 text-xs flex items-center gap-1">
-                                      <AlertTriangle className="w-3 h-3" />
-                                      Uncertain
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleFeedback(index, category, true)}
-                                  disabled={feedbackValue === true || feedbackValue === 'corrected'}
-                                  className="h-8 w-8 p-0 group"
-                                  title="Mark as correct detection"
+                            <div className="mb-3">
+                              <Label className="text-white font-medium text-sm">{category}:</Label>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge 
+                                  variant={detectedValue === 'Not Detected' ? "destructive" : "secondary"}
+                                  className={detectedValue === 'Not Detected' ? "bg-red-600 text-white" : "bg-blue-600 text-white"}
                                 >
-                                  <CheckCircle className={`w-4 h-4 ${
-                                    feedbackValue === true ? 'text-green-500' : 
-                                    'text-slate-500 group-hover:text-green-400'
-                                  }`} />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleFeedback(index, category, false)}
-                                  disabled={feedbackValue === false || feedbackValue === 'corrected'}
-                                  className="h-8 w-8 p-0 group"
-                                  title="Mark as wrong detection and provide correction"
-                                >
-                                  <XCircle className={`w-4 h-4 ${
-                                    feedbackValue === false ? 'text-red-500' : 
-                                    'text-slate-500 group-hover:text-red-400'
-                                  }`} />
-                                </Button>
+                                  Best: {detectedValue}
+                                </Badge>
+                                {confidence > 0 && (
+                                  <span className="text-slate-400 text-xs">
+                                    {Math.round(confidence * 100)}% confidence
+                                  </span>
+                                )}
                               </div>
                             </div>
                             
-                            {feedbackValue === false && (
-                              <div className="flex gap-2 mt-2">
-                                <Input
-                                  type="text"
-                                  placeholder={`Enter correct ${category} value or describe what's wrong (e.g., "green" or "no ${category.toLowerCase()} in this image")`}
-                                  value={correctionInputs[feedbackKey] || ''}
-                                  onChange={(e) => handleCorrectionInputChange(index, category, e.target.value)}
-                                  className="bg-slate-600 border-slate-500 text-white text-sm"
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleCorrectionSubmit(index, category)}
-                                  disabled={!correctionInputs[feedbackKey]?.trim()}
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                  Submit
-                                </Button>
+                            {/* Show all tested values */}
+                            <div className="space-y-2">
+                              <Label className="text-slate-300 text-xs">All tested values:</Label>
+                              <div className="space-y-1">
+                                {Object.entries(values as any).map(([traitValue, examples]) => {
+                                  const traitResult = specificTraitResults?.[traitValue];
+                                  const isDetected = traitResult?.detected || false;
+                                  const traitConfidence = traitResult?.confidence || 0;
+                                  const feedbackKey = `${index}-${category}-${traitValue}`;
+                                  const feedbackValue = feedback[feedbackKey];
+                                  
+                                  return (
+                                    <div key={traitValue} className="flex items-center justify-between p-2 bg-slate-800/50 rounded text-sm border border-slate-600">
+                                      <div className="flex items-center gap-2">
+                                        <Badge 
+                                          variant={isDetected ? "default" : "outline"}
+                                          className={isDetected ? "bg-green-600 text-white" : "bg-red-600/20 text-red-300 border-red-600"}
+                                        >
+                                          {traitValue}: {isDetected ? 'Detected' : 'Not Detected'}
+                                        </Badge>
+                                        {traitConfidence > 0 && (
+                                          <span className="text-slate-400 text-xs">
+                                            {Math.round(traitConfidence * 100)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="flex gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleFeedback(index, `${category}-${traitValue}`, true)}
+                                          disabled={feedbackValue === true || feedbackValue === 'corrected'}
+                                          className="h-6 w-6 p-0 group"
+                                          title="Mark as correct"
+                                        >
+                                          <CheckCircle className={`w-3 h-3 ${
+                                            feedbackValue === true ? 'text-green-500' : 
+                                            'text-slate-500 group-hover:text-green-400'
+                                          }`} />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleFeedback(index, `${category}-${traitValue}`, false)}
+                                          disabled={feedbackValue === false || feedbackValue === 'corrected'}
+                                          className="h-6 w-6 p-0 group"
+                                          title="Mark as wrong"
+                                        >
+                                          <XCircle className={`w-3 h-3 ${
+                                            feedbackValue === false ? 'text-red-500' : 
+                                            'text-slate-500 group-hover:text-red-400'
+                                          }`} />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            )}
-
-                            {feedbackValue === 'corrected' && (
-                              <div className="text-green-400 text-sm mt-2">
-                                ✅ Correction submitted - AI will learn from this feedback
-                              </div>
-                            )}
+                            </div>
+                            
+                            {/* Feedback inputs for any trait that was marked wrong */}
+                            {Object.entries(values as any).map(([traitValue, examples]) => {
+                              const feedbackKey = `${index}-${category}-${traitValue}`;
+                              const feedbackValue = feedback[feedbackKey];
+                              
+                              if (feedbackValue === false) {
+                                return (
+                                  <div key={`feedback-${traitValue}`} className="flex gap-2 mt-2">
+                                    <Input
+                                      type="text"
+                                      placeholder={`Correct value for ${category}:${traitValue} (e.g., "should be detected" or "wrong detection")`}
+                                      value={correctionInputs[feedbackKey] || ''}
+                                      onChange={(e) => handleCorrectionInputChange(index, `${category}-${traitValue}`, e.target.value)}
+                                      className="bg-slate-600 border-slate-500 text-white text-sm"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleCorrectionSubmit(index, `${category}-${traitValue}`)}
+                                      disabled={!correctionInputs[feedbackKey]?.trim()}
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      Submit
+                                    </Button>
+                                  </div>
+                                );
+                              }
+                              
+                              if (feedbackValue === 'corrected') {
+                                return (
+                                  <div key={`corrected-${traitValue}`} className="text-green-400 text-xs mt-1">
+                                    ✅ Correction for {traitValue} submitted
+                                  </div>
+                                );
+                              }
+                              
+                              return null;
+                            })}
                           </div>
                         );
                       })}
