@@ -218,17 +218,15 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           }
         }
 
-        // Detect rare traits
-        const rareTraitResult = detectRareTraits(embedding);
-
+        // Note: Rare trait detection moved to collection analysis phase for better accuracy
         detectionResults.push({
           imageUrl: imageUrls[i],
           fileName: imageFiles[i]?.name,
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
           specificTraitResults: specificTraitResults,
-          rareTraits: rareTraitResult.detectedRareTraits,
-          rareTraitConfidence: rareTraitResult.confidence,
+          rareTraits: [], // Rare traits detected in collection analysis phase
+          rareTraitConfidence: 0,
           imageEmbedding: embedding
         });
       }
@@ -633,112 +631,24 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
                         );
                       })}
 
-                      {/* Rare Traits Section */}
-                      <div className="p-3 bg-gradient-to-r from-purple-900/30 to-yellow-900/30 rounded-lg border border-yellow-600/30">
+                      {/* Rare Traits - Note: Functionality removed from test phase, available in collection analysis */}
+                      <div className="p-3 bg-slate-700/30 rounded-lg border border-slate-600">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex-1">
                             <Label className="text-white font-medium text-sm flex items-center gap-2">
-                              <Sparkles className="w-4 h-4 text-yellow-400" />
-                              Rare Traits:
+                              <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                              Rare Traits (Collection Analysis Only):
                             </Label>
                             <div className="flex items-center gap-2 mt-1">
-                              {result.rareTraits && result.rareTraits.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {result.rareTraits.map((rareTrait: string, rareIndex: number) => (
-                                    <Badge 
-                                      key={rareIndex}
-                                      className="bg-gradient-to-r from-purple-600 to-yellow-600 text-white text-xs"
-                                    >
-                                      {rareTrait}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              ) : (
-                                <Badge variant="secondary" className="bg-gray-600 text-white">
-                                  No Rare Traits Detected
-                                </Badge>
-                              )}
-                              {result.rareTraitConfidence > 0 && (
-                                <span className="text-slate-400 text-xs">
-                                  {Math.round(result.rareTraitConfidence * 100)}% confidence
-                                </span>
-                              )}
+                              <Badge variant="secondary" className="bg-slate-600 text-white">
+                                Rare traits will be detected during full collection analysis
+                              </Badge>
                             </div>
-                          </div>
-                          
-                          <div className="flex gap-2">
-                            {(() => {
-                              const rareTraitFeedbackKey = `${index}-rare-traits`;
-                              const rareTraitFeedback = feedback[rareTraitFeedbackKey];
-                              
-                              return (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRareTraitFeedback(index, true)}
-                                    disabled={rareTraitFeedback === true || rareTraitFeedback === 'corrected'}
-                                    className="h-8 w-8 p-0 group"
-                                    title="Mark rare trait detection as correct"
-                                  >
-                                    <CheckCircle className={`w-4 h-4 ${
-                                      rareTraitFeedback === true ? 'text-green-500' : 
-                                      'text-slate-500 group-hover:text-green-400'
-                                    }`} />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRareTraitFeedback(index, false)}
-                                    disabled={rareTraitFeedback === false || rareTraitFeedback === 'corrected'}
-                                    className="h-8 w-8 p-0 group"
-                                    title="Mark rare trait detection as wrong and provide correction"
-                                  >
-                                    <XCircle className={`w-4 h-4 ${
-                                      rareTraitFeedback === false ? 'text-red-500' : 
-                                      'text-slate-500 group-hover:text-red-400'
-                                    }`} />
-                                  </Button>
-                                </>
-                              );
-                            })()}
+                            <p className="text-slate-400 text-xs mt-1">
+                              Rare trait detection is performed during full collection analysis for accuracy
+                            </p>
                           </div>
                         </div>
-                        
-                        {(() => {
-                          const rareTraitFeedbackKey = `${index}-rare-traits`;
-                          const rareTraitFeedback = feedback[rareTraitFeedbackKey];
-                          
-                          return (
-                            <>
-                              {rareTraitFeedback === false && (
-                                <div className="flex gap-2 mt-2">
-                                  <Input
-                                    type="text"
-                                    placeholder="Enter the actual rare traits (e.g., Background: Golden Glow (legendary), Eyes: Laser (epic))"
-                                    value={correctionInputs[rareTraitFeedbackKey] || ''}
-                                    onChange={(e) => handleCorrectionInputChange(index, 'rare-traits', e.target.value)}
-                                    className="bg-slate-600 border-slate-500 text-white text-sm"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleRareTraitCorrectionSubmit(index)}
-                                    disabled={!correctionInputs[rareTraitFeedbackKey]?.trim()}
-                                    className="bg-purple-600 hover:bg-purple-700"
-                                  >
-                                    Submit
-                                  </Button>
-                                </div>
-                              )}
-
-                              {rareTraitFeedback === 'corrected' && (
-                                <div className="text-green-400 text-sm mt-2">
-                                  ✅ Rare trait correction submitted - AI will learn from this feedback
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
                       </div>
                     </div>
                   </div>
