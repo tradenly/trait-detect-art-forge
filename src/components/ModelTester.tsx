@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, ImagePlus, AlertTriangle, Sparkles } from 'lucide-react';
+import { Progress } from "@/components/ui/progress";
+import { CheckCircle, XCircle, ImagePlus, AlertTriangle, Sparkles, Clock } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage } from '@/utils/embeddingUtils';
 import { enhancedDetector } from '@/utils/enhancedDetection';
@@ -46,6 +47,11 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
   const [feedback, setFeedback] = useState<{ [key: string]: boolean | string }>({});
   const [correctionInputs, setCorrectionInputs] = useState<{ [key: string]: string }>({});
   const [buttonClicked, setButtonClicked] = useState(false);
+  
+  // New states for image processing feedback
+  const [processingImages, setProcessingImages] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [imagesReady, setImagesReady] = useState(false);
 
   useEffect(() => {
     loadModel().then(() => {
@@ -74,25 +80,37 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
     setResults([]);
     setFeedback({});
     setCorrectionInputs({});
+    setImagesReady(false);
+    setProcessingImages(true);
+    setProcessingProgress(0);
 
     try {
       const embeddings: tf.Tensor[] = [];
       
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         const img = await loadImageFromFile(file);
         const processedImg = await preprocessImage(img);
         const embedding = await getImageEmbedding(processedImg);
         embeddings.push(embedding);
+        
+        // Update progress
+        const progress = ((i + 1) / files.length) * 100;
+        setProcessingProgress(progress);
       }
       
       setImageEmbeddings(embeddings);
+      setProcessingImages(false);
+      setImagesReady(true);
       
       toast({
-        title: "Images processed",
-        description: `${files.length} images ready for testing`
+        title: "Images Processed Successfully ✅",
+        description: `${files.length} images are now ready for AI detection`
       });
     } catch (error) {
       console.error('Error processing images:', error);
+      setProcessingImages(false);
+      setImagesReady(false);
       toast({
         title: "Error Processing Images",
         description: "Could not create embeddings",
@@ -148,10 +166,10 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       return;
     }
 
-    if (imageEmbeddings.length === 0) {
+    if (!imagesReady || imageEmbeddings.length === 0) {
       toast({
-        title: "No image embeddings",
-        description: "Please upload images first",
+        title: "Images not ready",
+        description: "Please wait for images to finish processing",
         variant: "destructive"
       });
       return;
@@ -472,30 +490,78 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             </Label>
           </div>
 
-          {imageUrls.length > 0 && (
-            <p className="text-sm text-slate-400 text-center">
-              {imageUrls.length} images uploaded and ready for testing
-            </p>
+          {/* Processing Status */}
+          {processingImages && (
+            <div className="space-y-3 p-4 bg-slate-800/50 rounded-lg border border-slate-600">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-400 animate-spin" />
+                <span className="text-white font-medium">Processing Images...</span>
+                <span className="text-slate-400 text-sm">({Math.round(processingProgress)}%)</span>
+              </div>
+              <Progress value={processingProgress} className="h-2" />
+              <p className="text-sm text-slate-400">
+                Creating AI embeddings for {imageFiles.length} images. Please wait before running detection.
+              </p>
+            </div>
           )}
 
-            <Button 
-              onClick={runDetection} 
-              disabled={imageUrls.length === 0 || loading} 
-              className={`w-full transition-all duration-300 ${
-                buttonClicked 
-                  ? 'bg-purple-400 hover:bg-purple-500 transform scale-105' 
-                  : 'bg-purple-600 hover:bg-purple-700'
-              }`}
-            >
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-                  Running Enhanced Detection...
-                </div>
-              ) : (
-                `Run Detection on ${imageUrls.length} Images`
-              )}
-            </Button>
+          {/* Ready Status */}
+          {imagesReady && !processingImages && imageUrls.length > 0 && (
+            <div className="flex items-center gap-2 p-3 bg-green-900/20 rounded-lg border border-green-600/30">
+              <CheckCircle className="w-4 h-4 text-green-400" />
+              <span className="text-green-400 font-medium">
+                {imageUrls.length} images processed and ready for AI detection
+              </span>
+            </div>
+          )}
+
+          {/* Not Ready Status */}
+          {imageUrls.length > 0 && !imagesReady && !processingImages && (
+            <div className="flex items-center gap-2 p-3 bg-red-900/20 rounded-lg border border-red-600/30">
+              <XCircle className="w-4 h-4 text-red-400" />
+              <span className="text-red-400 font-medium">
+                Image processing failed. Please try uploading again.
+              </span>
+            </div>
+          )}
+
+          {/* Run Detection Button */}
+          <Button 
+            onClick={runDetection} 
+            disabled={!imagesReady || loading || processingImages} 
+            className={`w-full transition-all duration-300 ${
+              buttonClicked 
+                ? 'bg-purple-400 hover:bg-purple-500 transform scale-105' 
+                : imagesReady 
+                  ? 'bg-purple-600 hover:bg-purple-700'
+                  : 'bg-slate-600 cursor-not-allowed'
+            }`}
+          >
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                Running Enhanced Detection...
+              </div>
+            ) : processingImages ? (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 animate-spin" />
+                Processing Images... Please Wait
+              </div>
+            ) : !imagesReady && imageUrls.length > 0 ? (
+              'Images Not Ready - Upload Failed'
+            ) : imagesReady ? (
+              `Run Detection on ${imageUrls.length} Images`
+            ) : (
+              'Upload Images First'
+            )}
+          </Button>
+
+          {/* Help Text */}
+          {!imagesReady && imageUrls.length > 0 && (
+            <p className="text-xs text-slate-500 text-center">
+              ⏳ Images must be processed before detection can begin
+            </p>
+          )}
         </CardContent>
       </Card>
 
