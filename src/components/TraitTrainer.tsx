@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,6 @@ import { Plus, X, Upload, Brain, Trash2, AlertTriangle, CheckCircle } from 'luci
 import { toast } from "@/hooks/use-toast";
 import { loadModel, getImageEmbedding, preprocessImage, batchProcessImages, validateTrainingQuality } from '@/utils/embeddingUtils';
 import { enhancedDetector } from '@/utils/enhancedDetection';
-import RareTraitDefiner from './RareTraitDefiner';
 import * as tf from '@tensorflow/tfjs';
 
 interface TrainingExample {
@@ -284,46 +284,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
     return "Insufficient (<3 examples)";
   };
 
-  const handleRareTraitsUpdate = (updatedRareTraits: RareTrait[]) => {
-    console.log(`🔥 RARE TRAITS UPDATE: Received ${updatedRareTraits.length} rare traits`);
-    
-    // Update the rare traits first
-    if (onRareTraitsUpdated) {
-      onRareTraitsUpdated(updatedRareTraits);
-    }
-
-    // CRITICAL: Integrate rare traits into main training data structure
-    const updatedTraits = { ...trainedTraits };
-    
-    // Add rare traits to the main training structure so they can be detected
-    updatedRareTraits.forEach(rareTrait => {
-      const { category, value } = rareTrait;
-      
-      // Ensure category exists in main training data
-      if (!updatedTraits[category]) {
-        updatedTraits[category] = {};
-        console.log(`🆕 Created new category for rare trait: ${category}`);
-      }
-      
-      // Check if we already have training data for this rare trait
-      const existingTrainingData = updatedTraits[category][value];
-      if (existingTrainingData && existingTrainingData.length > 0) {
-        console.log(`✅ Rare trait ${category}:${value} already has ${existingTrainingData.length} training examples`);
-      } else {
-        // Initialize empty array if no training data exists yet
-        if (!updatedTraits[category][value]) {
-          updatedTraits[category][value] = [];
-          console.log(`🔧 Initialized empty training array for rare trait: ${category}:${value}`);
-        }
-      }
-    });
-
-    // Update the main training data to include rare trait categories
-    onTraitsUpdated(updatedTraits);
-    
-    console.log(`🎯 RARE TRAIT INTEGRATION COMPLETE: ${updatedRareTraits.length} rare traits integrated into training data`);
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 p-3 bg-slate-700/50 rounded-lg">
@@ -502,12 +462,6 @@ const TraitTrainer = ({ onTraitsUpdated, trainedTraits, onRareTraitsUpdated, rar
           </CardContent>
         </Card>
       )}
-
-      <RareTraitDefiner 
-        onRareTraitsUpdate={handleRareTraitsUpdate}
-        initialRareTraits={rareTraits}
-        trainedTraits={trainedTraits}
-      />
 
       {categories.length > 0 && (
         <Card className="bg-green-900/20 border-green-700">
