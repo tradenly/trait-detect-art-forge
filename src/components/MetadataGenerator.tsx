@@ -28,16 +28,14 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       name: `${collectionName} #${String(index + 1).padStart(4, '0')}`,
       description: collectionDescription,
       image: `${ipfsBaseUrl}/${item.fileName}`,
-      fileName: item.fileName,
-      imageUrl: item.imageUrl,
-      collectionName,
-      collectionDescription,
-      // Only include detected traits with their rarity - clean output with no duplication
-      attributes: item.attributes.filter((attr: any) => attr.value !== 'Not Detected').map((attr: any) => ({
-        trait_type: attr.trait_type,
-        value: attr.value,
-        rarity: attr.rarity
-      }))
+      // Only include detected traits with clean format - no duplicates or debug info
+      attributes: item.attributes
+        .filter((attr: any) => attr.value !== 'Not Detected')
+        .map((attr: any) => ({
+          trait_type: attr.trait_type,
+          value: attr.value,
+          rarity: attr.rarity
+        }))
     }));
   };
 
@@ -50,7 +48,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
     
     toast({
       title: "JSON downloaded ✅",
-      description: "Metadata exported successfully"
+      description: "Clean metadata exported successfully"
     });
   };
 
@@ -66,7 +64,6 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       'Name',
       'Description', 
       'Image',
-      'FileName',
       ...traitTypes,
       ...traitTypes.map(trait => `${trait}_Rarity`)
     ].join(',');
@@ -75,8 +72,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       const baseData = [
         `"${item.name}"`,
         `"${item.description}"`,
-        `"${item.image}"`,
-        `"${item.fileName}"`
+        `"${item.image}"`
       ];
 
       // Add trait values
@@ -115,7 +111,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
     
     toast({
       title: "Individual JSONs downloaded ✅",
-      description: `${finalMetadata.length} metadata files exported`
+      description: `${finalMetadata.length} clean metadata files exported`
     });
   };
 
@@ -186,10 +182,10 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Eye className="w-5 h-5 text-purple-400" />
-            Metadata Preview
+            Clean Metadata Preview
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Review your generated metadata with image thumbnails
+            Review your clean, marketplace-ready metadata
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -237,7 +233,9 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
                 <div className="bg-slate-800 rounded-lg p-4">
                   <h5 className="text-white font-medium mb-2">Detected Traits</h5>
                   <div className="space-y-2">
-                    {metadata[previewIndex].attributes.map((attr: any, index: number) => (
+                    {metadata[previewIndex].attributes
+                      .filter((attr: any) => attr.value !== 'Not Detected')
+                      .map((attr: any, index: number) => (
                       <div key={index} className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
                         <span className="text-slate-300 text-sm">{attr.trait_type}</span>
                         <div className="flex items-center gap-2">
@@ -250,18 +248,20 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
                 </div>
 
                 <div className="bg-slate-800 rounded-lg p-4">
-                  <h5 className="text-white font-medium mb-2">JSON Preview</h5>
+                  <h5 className="text-white font-medium mb-2">Clean JSON Preview</h5>
                   <div className="bg-slate-900 rounded p-3 max-h-48 overflow-y-auto">
                     <pre className="text-xs text-slate-300 whitespace-pre-wrap">
                       {JSON.stringify({
                         name: `${collectionName} #${String(previewIndex + 1).padStart(4, '0')}`,
                         description: collectionDescription,
                         image: `${ipfsBaseUrl}/${metadata[previewIndex].fileName}`,
-                        attributes: metadata[previewIndex].attributes.map((attr: any) => ({
-                          trait_type: attr.trait_type,
-                          value: attr.value,
-                          rarity: attr.rarity
-                        }))
+                        attributes: metadata[previewIndex].attributes
+                          .filter((attr: any) => attr.value !== 'Not Detected')
+                          .map((attr: any) => ({
+                            trait_type: attr.trait_type,
+                            value: attr.value,
+                            rarity: attr.rarity
+                          }))
                       }, null, 2)}
                     </pre>
                   </div>
@@ -277,10 +277,10 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <Download className="w-5 h-5 text-purple-400" />
-            Export Metadata
+            Export Clean Metadata
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Download your generated metadata in various formats
+            Download your clean, marketplace-ready metadata in various formats
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -295,19 +295,27 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="text-xl font-bold text-purple-400">
-                {new Set(metadata.flatMap(item => item.attributes.map((attr: any) => attr.trait_type))).size}
+                {new Set(metadata.flatMap(item => 
+                  item.attributes
+                    .filter((attr: any) => attr.value !== 'Not Detected')
+                    .map((attr: any) => attr.trait_type)
+                )).size}
               </div>
               <div className="text-xs text-slate-400">Trait Types</div>
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="text-xl font-bold text-purple-400">
-                {new Set(metadata.flatMap(item => item.attributes.map((attr: any) => attr.value))).size}
+                {new Set(metadata.flatMap(item => 
+                  item.attributes
+                    .filter((attr: any) => attr.value !== 'Not Detected')
+                    .map((attr: any) => attr.value)
+                )).size}
               </div>
               <div className="text-xs text-slate-400">Unique Values</div>
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="text-xl font-bold text-purple-400">100%</div>
-              <div className="text-xs text-slate-400">Complete</div>
+              <div className="text-xs text-slate-400">Clean</div>
             </div>
           </div>
 
@@ -334,11 +342,11 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
 
           {/* Format Information */}
           <div className="bg-slate-800/30 rounded-lg p-4">
-            <h5 className="text-white font-medium mb-2">Export Formats</h5>
+            <h5 className="text-white font-medium mb-2">Clean Export Formats</h5>
             <div className="text-xs text-slate-400 space-y-1">
-              <p><strong>JSON:</strong> Single file with all metadata - compatible with OpenSea, Tradeport, and most marketplaces</p>
+              <p><strong>JSON:</strong> Clean metadata with only name, description, image, and attributes - no debug info</p>
               <p><strong>CSV:</strong> Spreadsheet format with trait columns and rarity percentages for analysis</p>
-              <p><strong>Individual JSONs:</strong> Separate metadata file for each NFT (required by some platforms)</p>
+              <p><strong>Individual JSONs:</strong> Separate clean metadata file for each NFT (required by some platforms)</p>
             </div>
           </div>
         </CardContent>
