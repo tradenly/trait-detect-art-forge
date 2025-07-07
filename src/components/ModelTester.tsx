@@ -45,6 +45,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
   const [imageEmbeddings, setImageEmbeddings] = useState<tf.Tensor[]>([]);
   const [feedback, setFeedback] = useState<{ [key: string]: boolean | string }>({});
   const [correctionInputs, setCorrectionInputs] = useState<{ [key: string]: string }>({});
+  const [buttonClicked, setButtonClicked] = useState(false);
 
   useEffect(() => {
     loadModel().then(() => {
@@ -155,6 +156,10 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       });
       return;
     }
+
+    // Set button clicked state for visual feedback
+    setButtonClicked(true);
+    setTimeout(() => setButtonClicked(false), 2000); // Reset after 2 seconds
 
     setLoading(true);
     setResults([]);
@@ -473,7 +478,15 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             </p>
           )}
 
-            <Button onClick={runDetection} disabled={imageUrls.length === 0 || loading} className="w-full">
+            <Button 
+              onClick={runDetection} 
+              disabled={imageUrls.length === 0 || loading} 
+              className={`w-full transition-all duration-300 ${
+                buttonClicked 
+                  ? 'bg-purple-400 hover:bg-purple-500 transform scale-105' 
+                  : 'bg-purple-600 hover:bg-purple-700'
+              }`}
+            >
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
