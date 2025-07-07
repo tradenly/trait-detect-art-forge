@@ -28,7 +28,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       name: `${collectionName} #${String(index + 1).padStart(4, '0')}`,
       description: collectionDescription,
       image: `${ipfsBaseUrl}/${item.fileName}`,
-      // Only include detected traits with clean format - no duplicates or debug info
+      // Only include clean detected traits - no debug info, no duplicates
       attributes: item.attributes
         .filter((attr: any) => attr.value !== 'Not Detected')
         .map((attr: any) => ({
