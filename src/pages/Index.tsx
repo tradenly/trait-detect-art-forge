@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,7 +64,7 @@ const Index = () => {
           <div className="flex items-center justify-center gap-3 mb-4">
             <Brain className="w-12 h-12 text-purple-400" />
             <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              AI Trait Forge
+              Meta Mint
             </h1>
           </div>
           <p className="text-xl text-slate-300 max-w-2xl mx-auto">
