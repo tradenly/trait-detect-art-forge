@@ -46,12 +46,15 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
   const [imageEmbeddings, setImageEmbeddings] = useState<tf.Tensor[]>([]);
   const [feedback, setFeedback] = useState<{ [key: string]: boolean | string }>({});
   const [correctionInputs, setCorrectionInputs] = useState<{ [key: string]: string }>({});
-  const [buttonClicked, setButtonClicked] = useState(false);
   
   // New states for image processing feedback
   const [processingImages, setProcessingImages] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [imagesReady, setImagesReady] = useState(false);
+  
+  // New states for detection progress
+  const [detectionProgress, setDetectionProgress] = useState(0);
+  const [currentDetectionImage, setCurrentDetectionImage] = useState('');
 
   useEffect(() => {
     loadModel().then(() => {
@@ -175,20 +178,24 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       return;
     }
 
-    // Set button clicked state for visual feedback
-    setButtonClicked(true);
-    setTimeout(() => setButtonClicked(false), 2000); // Reset after 2 seconds
-
     setLoading(true);
     setResults([]);
     setFeedback({});
     setCorrectionInputs({});
+    setDetectionProgress(0);
+    setCurrentDetectionImage('');
 
     try {
       const detectionResults: any[] = [];
 
       for (let i = 0; i < imageEmbeddings.length; i++) {
         const embedding = imageEmbeddings[i];
+        const fileName = imageFiles[i]?.name || `Image ${i + 1}`;
+        
+        // Update progress
+        setDetectionProgress(((i) / imageEmbeddings.length) * 100);
+        setCurrentDetectionImage(fileName);
+        
         const detectedTraits: any = {};
         const confidenceScores: any = {};
         const specificTraitResults: any = {};
@@ -253,6 +260,10 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           imageEmbedding: embedding
         });
       }
+      
+      // Complete progress
+      setDetectionProgress(100);
+      setCurrentDetectionImage('Complete!');
 
       setResults(detectionResults);
 
@@ -269,6 +280,8 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       });
     } finally {
       setLoading(false);
+      setDetectionProgress(0);
+      setCurrentDetectionImage('');
     }
   };
 
@@ -525,22 +538,37 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             </div>
           )}
 
+          {/* Detection Progress */}
+          {loading && (
+            <div className="space-y-3 p-4 bg-purple-900/20 rounded-lg border border-purple-600/30">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                <span className="text-white font-medium">Running AI Detection...</span>
+                <span className="text-slate-400 text-sm">({Math.round(detectionProgress)}%)</span>
+              </div>
+              <Progress value={detectionProgress} className="h-3" />
+              <p className="text-sm text-slate-400">
+                {currentDetectionImage && `Processing: ${currentDetectionImage}`}
+              </p>
+            </div>
+          )}
+
           {/* Run Detection Button */}
           <Button 
             onClick={runDetection} 
             disabled={!imagesReady || loading || processingImages} 
-            className={`w-full transition-all duration-300 ${
-              buttonClicked 
-                ? 'bg-purple-400 hover:bg-purple-500 transform scale-105' 
+            className={`w-full transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] ${
+              loading 
+                ? 'bg-purple-500 cursor-not-allowed' 
                 : imagesReady 
-                  ? 'bg-purple-600 hover:bg-purple-700'
+                  ? 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800 shadow-lg hover:shadow-xl'
                   : 'bg-slate-600 cursor-not-allowed'
             }`}
           >
             {loading ? (
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-                Running Enhanced Detection...
+                <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
+                Running Enhanced Detection... ({Math.round(detectionProgress)}%)
               </div>
             ) : processingImages ? (
               <div className="flex items-center gap-2">
@@ -550,7 +578,10 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             ) : !imagesReady && imageUrls.length > 0 ? (
               'Images Not Ready - Upload Failed'
             ) : imagesReady ? (
-              `Run Detection on ${imageUrls.length} Images`
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Run Detection on {imageUrls.length} Images
+              </div>
             ) : (
               'Upload Images First'
             )}
