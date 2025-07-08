@@ -23,25 +23,95 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
 
   const hasData = metadata.length > 0;
 
-  const generateFinalMetadata = () => {
-    return metadata.map((item, index) => ({
-      name: `${collectionName} #${String(index + 1).padStart(4, '0')}`,
-      description: collectionDescription,
-      image: `${ipfsBaseUrl}/${item.fileName}`,
-      // Only include clean detected traits - no debug info, no duplicates
-      attributes: item.attributes
-        .filter((attr: any) => attr.value !== 'Not Detected')
-        .map((attr: any) => ({
-          trait_type: attr.trait_type,
-          value: attr.value,
-          rarity: attr.rarity
-        }))
-    }));
+  // Clean metadata function - remove ALL debug info and duplicates
+  const getCleanMetadata = () => {
+    return metadata.map((item, index) => {
+      // Get only detected attributes without duplicates
+      const cleanAttributes = [];
+      const seenTraits = new Set();
+      
+      // First, try to get from the main attributes array if it exists and has clean data
+      if (item.attributes && Array.isArray(item.attributes)) {
+        item.attributes.forEach((attr: any) => {
+          if (attr.value && attr.value !== 'Not Detected' && attr.trait_type) {
+            const traitKey = `${attr.trait_type}-${attr.value}`;
+            if (!seenTraits.has(traitKey)) {
+              seenTraits.add(traitKey);
+              cleanAttributes.push({
+                trait_type: attr.trait_type,
+                value: attr.value,
+                rarity: attr.rarity || calculateRarity(attr.trait_type, attr.value)
+              });
+            }
+          }
+        });
+      }
+      
+      // If no attributes found, check allTraitAnalysis
+      if (cleanAttributes.length === 0 && item.allTraitAnalysis && Array.isArray(item.allTraitAnalysis)) {
+        item.allTraitAnalysis.forEach((attr: any) => {
+          if (attr.value && attr.value !== 'Not Detected' && attr.trait_type && attr.isDetected) {
+            const traitKey = `${attr.trait_type}-${attr.value}`;
+            if (!seenTraits.has(traitKey)) {
+              seenTraits.add(traitKey);
+              cleanAttributes.push({
+                trait_type: attr.trait_type,
+                value: attr.value,
+                rarity: attr.rarity || calculateRarity(attr.trait_type, attr.value)
+              });
+            }
+          }
+        });
+      }
+      
+      // If still no attributes, check detectedTraits object
+      if (cleanAttributes.length === 0 && item.detectedTraits) {
+        Object.entries(item.detectedTraits).forEach(([traitType, value]: [string, any]) => {
+          if (value && value !== 'Not Detected') {
+            const traitKey = `${traitType}-${value}`;
+            if (!seenTraits.has(traitKey)) {
+              seenTraits.add(traitKey);
+              cleanAttributes.push({
+                trait_type: traitType,
+                value: value,
+                rarity: calculateRarity(traitType, value)
+              });
+            }
+          }
+        });
+      }
+
+      return {
+        name: `${collectionName} #${String(index + 1).padStart(4, '0')}`,
+        description: collectionDescription,
+        image: `${ipfsBaseUrl}/${item.fileName}`,
+        attributes: cleanAttributes
+      };
+    });
+  };
+
+  const calculateRarity = (traitType: string, value: string) => {
+    // Calculate rarity based on how many items have this trait value
+    const totalItems = metadata.length;
+    let count = 0;
+    
+    metadata.forEach(item => {
+      // Check in various places where the trait might be stored
+      const hasThisTrait = 
+        (item.attributes && item.attributes.some((attr: any) => attr.trait_type === traitType && attr.value === value)) ||
+        (item.allTraitAnalysis && item.allTraitAnalysis.some((attr: any) => attr.trait_type === traitType && attr.value === value && attr.isDetected)) ||
+        (item.detectedTraits && item.detectedTraits[traitType] === value);
+      
+      if (hasThisTrait) count++;
+    });
+    
+    const percentage = totalItems > 0 ? (count / totalItems) * 100 : 0;
+    return `${percentage.toFixed(1)}%`;
   };
 
   const downloadJSON = () => {
-    const finalMetadata = generateFinalMetadata();
-    const blob = new Blob([JSON.stringify(finalMetadata, null, 2)], { 
+    const cleanMetadata = getCleanMetadata();
+    const blob = new Blob([JSON.stringify(cleanMetadata, null, 2)], { 
       type: 'application/json' 
     });
     saveAs(blob, `${collectionName.replace(/\s+/g, '_')}_metadata.json`);
@@ -53,10 +123,10 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
   };
 
   const downloadCSV = () => {
-    const finalMetadata = generateFinalMetadata();
+    const cleanMetadata = getCleanMetadata();
     
     // Create CSV with one row per NFT, columns for each trait
-    const traitTypes = Array.from(new Set(finalMetadata.flatMap(item => 
+    const traitTypes = Array.from(new Set(cleanMetadata.flatMap(item => 
       item.attributes.map((attr: any) => attr.trait_type)
     )));
 
@@ -68,7 +138,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       ...traitTypes.map(trait => `${trait}_Rarity`)
     ].join(',');
 
-    const csvRows = finalMetadata.map(item => {
+    const csvRows = cleanMetadata.map(item => {
       const baseData = [
         `"${item.name}"`,
         `"${item.description}"`,
@@ -101,8 +171,8 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
   };
 
   const downloadIndividualJSON = () => {
-    const finalMetadata = generateFinalMetadata();
-    finalMetadata.forEach((item, index) => {
+    const cleanMetadata = getCleanMetadata();
+    cleanMetadata.forEach((item, index) => {
       const blob = new Blob([JSON.stringify(item, null, 2)], { 
         type: 'application/json' 
       });
@@ -111,7 +181,7 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
     
     toast({
       title: "Individual JSONs downloaded ✅",
-      description: `${finalMetadata.length} clean metadata files exported`
+      description: `${cleanMetadata.length} clean metadata files exported`
     });
   };
 
@@ -128,6 +198,9 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
       </Card>
     );
   }
+
+  // Get clean metadata for preview
+  const cleanMetadata = getCleanMetadata();
 
   return (
     <div className="space-y-6">
@@ -200,69 +273,60 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
               Previous
             </Button>
             <span className="text-white">
-              {previewIndex + 1} of {metadata.length} NFTs
+              {previewIndex + 1} of {cleanMetadata.length} NFTs
             </span>
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setPreviewIndex(Math.min(metadata.length - 1, previewIndex + 1))}
-              disabled={previewIndex === metadata.length - 1}
+              onClick={() => setPreviewIndex(Math.min(cleanMetadata.length - 1, previewIndex + 1))}
+              disabled={previewIndex === cleanMetadata.length - 1}
             >
               Next
             </Button>
           </div>
 
           {/* Current Item Preview */}
-          {metadata[previewIndex] && (
+          {cleanMetadata[previewIndex] && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <div className="aspect-square bg-slate-800 rounded-lg overflow-hidden">
                   <img
                     src={metadata[previewIndex].imageUrl}
-                    alt={metadata[previewIndex].name}
+                    alt={cleanMetadata[previewIndex].name}
                     className="w-full h-full object-cover"
                   />
                 </div>
                 <div className="text-center">
-                  <h4 className="font-medium text-white">{collectionName} #{String(previewIndex + 1).padStart(4, '0')}</h4>
+                  <h4 className="font-medium text-white">{cleanMetadata[previewIndex].name}</h4>
                   <p className="text-sm text-slate-400">{metadata[previewIndex].fileName}</p>
                 </div>
               </div>
               
               <div className="space-y-4">
                 <div className="bg-slate-800 rounded-lg p-4">
-                  <h5 className="text-white font-medium mb-2">Detected Traits</h5>
-                  <div className="space-y-2">
-                    {metadata[previewIndex].attributes
-                      .filter((attr: any) => attr.value !== 'Not Detected')
-                      .map((attr: any, index: number) => (
-                      <div key={index} className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
-                        <span className="text-slate-300 text-sm">{attr.trait_type}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{attr.value}</Badge>
-                          <span className="text-xs text-slate-400">{attr.rarity}</span>
+                  <h5 className="text-white font-medium mb-2">Detected Traits ({cleanMetadata[previewIndex].attributes.length})</h5>
+                  {cleanMetadata[previewIndex].attributes.length > 0 ? (
+                    <div className="space-y-2">
+                      {cleanMetadata[previewIndex].attributes.map((attr: any, index: number) => (
+                        <div key={index} className="flex justify-between items-center p-2 bg-slate-700/50 rounded">
+                          <span className="text-slate-300 text-sm">{attr.trait_type}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{attr.value}</Badge>
+                            <span className="text-xs text-slate-400">{attr.rarity}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-sm">No traits detected for this image</p>
+                  )}
                 </div>
 
                 <div className="bg-slate-800 rounded-lg p-4">
                   <h5 className="text-white font-medium mb-2">Clean JSON Preview</h5>
                   <div className="bg-slate-900 rounded p-3 max-h-48 overflow-y-auto">
                     <pre className="text-xs text-slate-300 whitespace-pre-wrap">
-                      {JSON.stringify({
-                        name: `${collectionName} #${String(previewIndex + 1).padStart(4, '0')}`,
-                        description: collectionDescription,
-                        image: `${ipfsBaseUrl}/${metadata[previewIndex].fileName}`,
-                        attributes: metadata[previewIndex].attributes
-                          .filter((attr: any) => attr.value !== 'Not Detected')
-                          .map((attr: any) => ({
-                            trait_type: attr.trait_type,
-                            value: attr.value,
-                            rarity: attr.rarity
-                          }))
-                      }, null, 2)}
+                      {JSON.stringify(cleanMetadata[previewIndex], null, 2)}
                     </pre>
                   </div>
                 </div>
@@ -289,26 +353,22 @@ const MetadataGenerator = ({ metadata, uploadedImages }: MetadataGeneratorProps)
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <CheckCircle className="w-4 h-4 text-green-400" />
-                <div className="text-xl font-bold text-green-400">{metadata.length}</div>
+                <div className="text-xl font-bold text-green-400">{cleanMetadata.length}</div>
               </div>
               <div className="text-xs text-slate-400">Total NFTs</div>
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="text-xl font-bold text-purple-400">
-                {new Set(metadata.flatMap(item => 
-                  item.attributes
-                    .filter((attr: any) => attr.value !== 'Not Detected')
-                    .map((attr: any) => attr.trait_type)
+                {new Set(cleanMetadata.flatMap(item => 
+                  item.attributes.map((attr: any) => attr.trait_type)
                 )).size}
               </div>
               <div className="text-xs text-slate-400">Trait Types</div>
             </div>
             <div className="text-center p-3 bg-slate-800/50 rounded-lg">
               <div className="text-xl font-bold text-purple-400">
-                {new Set(metadata.flatMap(item => 
-                  item.attributes
-                    .filter((attr: any) => attr.value !== 'Not Detected')
-                    .map((attr: any) => attr.value)
+                {new Set(cleanMetadata.flatMap(item => 
+                  item.attributes.map((attr: any) => attr.value)
                 )).size}
               </div>
               <div className="text-xs text-slate-400">Unique Values</div>

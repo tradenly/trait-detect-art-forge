@@ -178,6 +178,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       return;
     }
 
+    console.log('🚀 Starting detection process...');
     setLoading(true);
     setResults([]);
     setFeedback({});
@@ -192,15 +193,19 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
         const embedding = imageEmbeddings[i];
         const fileName = imageFiles[i]?.name || `Image ${i + 1}`;
         
-        // Update progress
-        setDetectionProgress(((i) / imageEmbeddings.length) * 100);
+        console.log(`🔍 Processing image ${i + 1}/${imageEmbeddings.length}: ${fileName}`);
+        
+        // Update progress - ensure it's visible
+        const progressValue = ((i) / imageEmbeddings.length) * 100;
+        setDetectionProgress(progressValue);
         setCurrentDetectionImage(fileName);
+        
+        // Add a small delay to ensure UI updates are visible
+        await new Promise(resolve => setTimeout(resolve, 50));
         
         const detectedTraits: any = {};
         const confidenceScores: any = {};
         const specificTraitResults: any = {};
-
-        console.log(`🔍 Processing image ${i + 1}/${imageEmbeddings.length}`);
 
         // Use enhanced detector for ALL trait detection - TEST EACH VALUE SEPARATELY
         for (const [traitCategory, traitValues] of Object.entries(trainedTraits)) {
@@ -255,7 +260,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
           detectedTraits: detectedTraits,
           confidenceScores: confidenceScores,
           specificTraitResults: specificTraitResults,
-          rareTraits: [], // Rare traits detected in collection analysis phase
+          rareTraits: [],
           rareTraitConfidence: 0,
           imageEmbedding: embedding
         });
@@ -264,8 +269,12 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
       // Complete progress
       setDetectionProgress(100);
       setCurrentDetectionImage('Complete!');
+      
+      // Small delay to show completion
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       setResults(detectionResults);
+      console.log('✅ Detection complete, results:', detectionResults.length);
 
       toast({
         title: "Detection Complete ✅",
@@ -523,7 +532,7 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             <div className="flex items-center gap-2 p-3 bg-green-900/20 rounded-lg border border-green-600/30">
               <CheckCircle className="w-4 h-4 text-green-400" />
               <span className="text-green-400 font-medium">
-                {imageUrls.length} images processed and ready for AI detection
+                ✅ {imageUrls.length} images processed and ready for AI detection
               </span>
             </div>
           )}
@@ -533,53 +542,61 @@ const ModelTester = ({ trainedTraits, rareTraits = [] }: ModelTesterProps) => {
             <div className="flex items-center gap-2 p-3 bg-red-900/20 rounded-lg border border-red-600/30">
               <XCircle className="w-4 h-4 text-red-400" />
               <span className="text-red-400 font-medium">
-                Image processing failed. Please try uploading again.
+                ❌ Image processing failed. Please try uploading again.
               </span>
             </div>
           )}
 
-          {/* Detection Progress */}
+          {/* Detection Progress - Enhanced visibility */}
           {loading && (
-            <div className="space-y-3 p-4 bg-purple-900/20 rounded-lg border border-purple-600/30">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
-                <span className="text-white font-medium">Running AI Detection...</span>
-                <span className="text-slate-400 text-sm">({Math.round(detectionProgress)}%)</span>
+            <div className="space-y-3 p-4 bg-purple-900/30 rounded-lg border-2 border-purple-500/50 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 border-3 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-white font-semibold text-lg">Running AI Detection...</span>
+                <span className="text-purple-300 font-medium">({Math.round(detectionProgress)}%)</span>
               </div>
-              <Progress value={detectionProgress} className="h-3" />
-              <p className="text-sm text-slate-400">
-                {currentDetectionImage && `Processing: ${currentDetectionImage}`}
-              </p>
+              <Progress value={detectionProgress} className="h-4 bg-slate-700">
+                <div className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-300" 
+                     style={{ width: `${detectionProgress}%` }} />
+              </Progress>
+              {currentDetectionImage && (
+                <p className="text-sm text-purple-200 font-medium">
+                  🔍 Processing: {currentDetectionImage}
+                </p>
+              )}
             </div>
           )}
 
-          {/* Run Detection Button */}
+          {/* Run Detection Button - Enhanced interaction */}
           <Button 
             onClick={runDetection} 
             disabled={!imagesReady || loading || processingImages} 
-            className={`w-full transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] ${
+            className={`w-full h-14 text-lg font-semibold transition-all duration-200 transform ${
               loading 
-                ? 'bg-purple-500 cursor-not-allowed' 
+                ? 'bg-purple-500/70 cursor-not-allowed scale-100' 
                 : imagesReady 
-                  ? 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800 shadow-lg hover:shadow-xl'
-                  : 'bg-slate-600 cursor-not-allowed'
+                  ? 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800 hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl hover:shadow-purple-500/25'
+                  : 'bg-slate-600 cursor-not-allowed scale-100'
             }`}
+            style={{
+              background: loading ? 'linear-gradient(45deg, #8b5cf6, #a855f7)' : undefined
+            }}
           >
             {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
-                Running Enhanced Detection... ({Math.round(detectionProgress)}%)
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-white/70 border-t-transparent rounded-full animate-spin"></div>
+                <span>Running Enhanced Detection... ({Math.round(detectionProgress)}%)</span>
               </div>
             ) : processingImages ? (
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 animate-spin" />
+                <Clock className="w-5 h-5 animate-spin" />
                 Processing Images... Please Wait
               </div>
             ) : !imagesReady && imageUrls.length > 0 ? (
               'Images Not Ready - Upload Failed'
             ) : imagesReady ? (
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-5 h-5" />
                 Run Detection on {imageUrls.length} Images
               </div>
             ) : (
